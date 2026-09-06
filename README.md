@@ -4,11 +4,11 @@
 
 OPERATOR is a competitive skill platform where players enter short, high-pressure challenges, prove their ability, and climb verified rankings. It combines a premium command-center interface with Nimiq wallet identity and server-side replay validation.
 
-## What is Operator? 
+## What it is
 
 OPERATOR is a browser and Nimiq Pay skill platform. Each challenge is a fast test of memory, timing, sequence recognition, or precision. Players can practice locally as guests or connect a Nimiq wallet to enter ranked runs.
 
-The product promise is simple: **don't just play. Prove it.**
+The product promise is simple: **don’t just play. Prove it.**
 
 ## Why Nimiq
 
@@ -18,37 +18,27 @@ Nimiq provides a natural operator identity without passwords, seed phrases, or p
 
 ```text
 Connect Nimiq wallet
-	-> sign one login nonce
-	-> server verifies signature and creates an httpOnly session
-	-> server issues a unique run ID and deterministic seed
-	-> player submits replay events
-	-> server replays the seed and computes the score
-	-> verified result is stored in the rankings
+    -> sign one login nonce
+    -> server verifies signature and creates an httpOnly session
+    -> server issues a unique run ID and deterministic seed
+    -> player submits replay events
+    -> server replays the seed and computes the score
+    -> verified result is stored in the rankings
 ```
 
 The client never submits an authoritative score. It submits events from a server-issued run.
 
-## 8 challenges
+## 5 verified competitive games
 
-### Ranked runs
+These verified competitive challenges have deterministic seeded puzzles and server replay validators:
 
-These challenges have deterministic seeded puzzles and server replay validators:
-
-- **Block Rush:** clear connected network blocks.
 - **NIM PIN:** enter the seeded four-digit code.
+- **Key Sequence:** enter the seeded signal in order.
 - **Address Memory:** memorize and rebuild the seeded token pattern.
-- **NIM Vault:** solve the five-ring variant with a tighter time limit.
-- **Sync:** time five packets inside the target.
+- **NIM Lock:** align four seeded rings.
+- **NIM Cipher:** decode a seeded message using its displayed Caesar shift.
 
-### Practice-only
-
-These remain local practice until their replay validators are implemented:
-
-- **NIM Grid:** hit the active node.
-- **Key Sequence:** enter the signal in the right order.
-- **NIM Lock:** align the rotating lock rings.
-
-Practice scores are stored only in the browser and never enter rankings.
+The daily rotation and competitive ladder focus on this polished, trusted set rather than carrying weaker practice-only variants.
 
 ## Ranked verification architecture
 
@@ -76,7 +66,7 @@ The wallet is used for identity and authentication. It does not sign client-sele
 
 ## Friend challenges
 
-Connected operators can create a non-monetary challenge token for a ranked game. A friend joins with the token, both players receive the same server-generated seed, and each replay is validated independently before scores are compared.
+Connected operators can create a challenge token for a ranked game. A friend joins with the same puzzle and same seed, and both replays are validated independently before scores are compared.
 
 ## Security model
 
@@ -92,17 +82,6 @@ Connected operators can create a non-monetary challenge token for a ranked game.
 - No seed phrase or private key is requested or exposed.
 
 ## Local development
-
-## Project documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Security](docs/SECURITY.md)
-- [Replay protocol](docs/REPLAY-PROTOCOL.md)
-- [Nimiq integration](docs/NIMIQ-INTEGRATION.md)
-- [Analytics](docs/ANALYTICS.md)
-- [30-second demo](docs/DEMO.md)
-- [Deployment](docs/DEPLOYMENT.md)
-- [Competition rules](docs/COMPETITION.md)
 
 Install dependencies:
 
@@ -155,12 +134,9 @@ The app prefers Postgres when `DATABASE_URL` is configured, but it also falls ba
 
 ## Roadmap
 
-- Publish daily rankings and UTC countdown in the client.
-- Add replay validators for Block Rush, NIM Grid, and Sync.
-- Split each challenge into a testable module.
-- Add grades, unlocks, audio feedback, haptics, and reduced-motion support.
-- Add production rate limits, observability, and end-to-end auth/run tests.
-- Consider TestAlbatross tournament rewards only after the economy and anti-cheat model are audited.
+- Add deeper progression, unlocks, and seasonal rewards.
+- Expand observability, rate limits, and end-to-end auth/run tests.
+- Consider tournament rewards only after the economy and anti-cheat model are audited.
 
 ## Screenshots and demo
 
@@ -168,21 +144,20 @@ Run the app locally with `npm run dev` to view the OPERATOR interface. The curre
 
 Brand assets are in `public/logo/`, with the browser icon at `public/favicon.svg`:
 
-- `operator-primary.svg` â€” primary lockup for the dark interface.
-- `operator-horizontal.svg` â€” navbar and banner lockup.
-- `operator-mark.svg` â€” cyan network mark with yellow operator node.
-- `operator-wordmark.svg` â€” wordmark-only treatment.
-- `operator-dark.svg` â€” full-color lockup for light backgrounds.
-- `operator-light.svg` â€” full-color lockup for dark backgrounds.
-- `operator-monochrome.svg` â€” one-color fallback.
-- `operator-icon.svg` â€” app and favicon icon.
+- `operator-primary.svg` — primary lockup for the dark interface.
+- `operator-horizontal.svg` — navbar and banner lockup.
+- `operator-mark.svg` — cyan network mark with yellow operator node.
+- `operator-wordmark.svg` — wordmark-only treatment.
+- `operator-dark.svg` — full-color lockup for light backgrounds.
+- `operator-light.svg` — full-color lockup for dark backgrounds.
+- `operator-monochrome.svg` — one-color fallback.
+- `operator-icon.svg` — app and favicon icon.
 
 For a hackathon demo, show this sequence:
 
 1. Open the OPERATOR landing page.
 2. Connect with Nimiq Hub or open the Mini App in Nimiq Pay.
-3. Start a ranked run for one of the six supported challenges.
+3. Start a ranked run for one of the five supported competitive challenges.
 4. Complete the challenge and show the `SUBMITTING REPLAY` state.
 5. Show the `VERIFIED RESULT` or `RUN NOT ACCEPTED` state.
 6. Open Rankings to show only server-backed entries.
-

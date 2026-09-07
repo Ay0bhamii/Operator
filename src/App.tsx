@@ -89,6 +89,9 @@ function App() {
   const [rankingPeriod,setRankingPeriod]=useState<RankedPeriod>("all");
   const eventsRef=useRef<GameEvent[]>([]);
   const runStartedAt=useRef(0);
+  // A game can finish from both its last interaction and its timer in the same render.
+  // Keep completion server-authoritative, but never submit the same signed run twice.
+  const submittingRunRef=useRef<string|null>(null);
   const [rankedSubmission,setRankedSubmission]=useState<RankedSubmission>({state:"idle"});
   const [dailyOperation,setDailyOperation]=useState<DailyOperation|null>(null);
   const [leaderboard,setLeaderboard]=useState<Array<{username:string;score:number;rank:number;isYou?:boolean}>>([]);
@@ -231,6 +234,7 @@ function App() {
       const challenge = await joinChallenge(challengeToken.trim());
       setChallenge(challenge);
       setActiveRun({ runId: "", seed: challenge.seed, gameId: challenge.gameId, mode: "ranked", expiresAt: "", challengeToken: challenge.token });
+      submittingRunRef.current=null;
       eventsRef.current=[];
       runStartedAt.current=performance.now();
       setGame(challenge.gameId as GameId);
@@ -247,6 +251,7 @@ function App() {
       const joined=await joinChallenge(challengeId);
       setChallenge(joined);
       setActiveRun({ runId: "", seed: joined.seed, gameId: joined.gameId, mode: "ranked", expiresAt: joined.expiresAt, challengeToken: joined.challengeId });
+      submittingRunRef.current=null;
       eventsRef.current=[];
       runStartedAt.current=performance.now();
       setGame(joined.gameId as GameId);
@@ -262,6 +267,7 @@ function App() {
   async function beginGame(id: GameId, mode: "ranked" | "daily" | "practice" = "ranked") {
     setActiveRun(null);
     setRankedSubmission({state:"idle"});
+    submittingRunRef.current=null;
     eventsRef.current=[];
     if (wallet && rankedGames.includes(id) && mode !== "practice") {
       setActiveRun(await startRun(id, mode));
@@ -318,6 +324,9 @@ function App() {
 
   async function finish(id:GameId,r:Result){
     if(activeRun){
+      const submissionKey=activeRun.challengeToken || activeRun.runId;
+      if(submittingRunRef.current===submissionKey) return;
+      submittingRunRef.current=submissionKey;
       setRankedSubmission({state:"submitting"});
       try {
         const result = activeRun.challengeToken ? await submitChallenge(activeRun.challengeToken, eventsRef.current) : await submitRun(activeRun.runId, eventsRef.current);

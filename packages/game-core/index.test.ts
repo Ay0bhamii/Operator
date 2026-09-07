@@ -48,13 +48,13 @@ test("replay validates ranked block rush and sync events", () => {
     { t: 100, type: "choice", value: "3" },
     { t: 200, type: "choice", value: "4" },
   ]);
-  assert.deepEqual(blocks, { score: 250, xp: 150, valid: true });
+  assert.deepEqual(blocks, { score: 250, xp: 299, valid: true });
   const sync = replay("sync", "sync-seed", Array.from({ length: 5 }, (_, index) => ({
     t: (index + 1) * 100,
     type: "choice" as const,
     value: "hit",
   })));
-  assert.deepEqual(sync, { score: 500, xp: 150, valid: true });
+  assert.deepEqual(sync, { score: 500, xp: 298, valid: true });
 });
 
 test("replay rejects malformed and incomplete ranked events", () => {

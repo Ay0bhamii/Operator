@@ -58,6 +58,13 @@ export function createPuzzle(gameId: Exclude<RankedGameId, "block-rush" | "sync"
   return { gameId, tokens: Array.from({ length: 4 + tier }, () => memoryTokens[Math.floor(random() * memoryTokens.length)]) };
 }
 
+// XP is calculated during the authoritative replay. A faster valid completion
+// earns up to double the base XP; the client never supplies an XP value.
+function speedXp(baseXp: number, duration: number, limit: number) {
+  const remainingRatio = Math.max(0, Math.min(1, (limit - duration) / limit));
+  return baseXp + Math.round(baseXp * remainingRatio);
+}
+
 export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]): ReplayResult {
   const timingError = requireEvents(events);
   if (timingError) return { score: 0, xp: 0, valid: false, reason: timingError };
@@ -66,13 +73,13 @@ export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]):
     const groups = events.map(event => Number(event.value));
     if (groups.some(group => group < 3 || group > 88)) return { score: 0, xp: 0, valid: false, reason: "invalid block group" };
     const score = groups.reduce((total, group) => total + group * group * 10, 0);
-    return { score, xp: 150, valid: true };
+    return { score, xp: speedXp(150, events[events.length - 1].t, 30_000), valid: true };
   }
   if (gameId === "sync") {
     if (events.some(event => event.type !== "choice" || !/^(hit|miss)$/.test(event.value))) return { score: 0, xp: 0, valid: false, reason: "invalid sync event" };
     const hits = events.filter(event => event.value === "hit").length;
     if (hits < 5) return { score: 0, xp: 0, valid: false, reason: "sync challenge incomplete" };
-    return { score: hits * 100, xp: 150, valid: true };
+    return { score: hits * 100, xp: speedXp(150, events[events.length - 1].t, 30_000), valid: true };
   }
   const puzzle = createPuzzle(gameId, seed);
   const minimumGap = gameId === "sequence" ? 70 : gameId === "nim-lock" || gameId === "vault" ? 100 : 80;
@@ -92,7 +99,8 @@ export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]):
     if (!valid) return { score: 0, xp: 0, valid: false, reason: "wrong solution" };
     const duration = events[events.length - 1].t;
     const limit = puzzle.gameId === "vault" ? 10000 : 20000;
-    return { score: Math.max(100, Math.round((limit - duration) / 5) + clicks.length * 100), xp: puzzle.gameId === "vault" ? 220 : 180, valid: true };
+    const baseXp = puzzle.gameId === "vault" ? 220 : 180;
+    return { score: Math.max(100, Math.round((limit - duration) / 5) + clicks.length * 100), xp: speedXp(baseXp, duration, limit), valid: true };
   }
   const target = puzzle.gameId === "nim-pin" ? [puzzle.pin] : puzzle.gameId === "sequence" ? puzzle.sequence : puzzle.gameId === "memory" ? puzzle.tokens : [];
   const valid = values.length === target.length && values.every((value, index) => value === target[index]);
@@ -101,7 +109,8 @@ export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]):
   if (duration < target.length * minimumGap) return { score: 0, xp: 0, valid: false, reason: "duration below minimum" };
   const limit = gameId === "nim-pin" ? 12000 : gameId === "sequence" ? 7000 : 2500;
   const score = Math.max(100, Math.round((limit - duration) / (gameId === "sequence" ? 2 : 4)));
-  return { score, xp: gameId === "sequence" ? 180 : gameId === "nim-pin" ? 125 : 160, valid: true };
+  const baseXp = gameId === "sequence" ? 180 : gameId === "nim-pin" ? 125 : 160;
+  return { score, xp: speedXp(baseXp, duration, limit), valid: true };
 }
 
 export function dailyGame(day: string): RankedGameId {

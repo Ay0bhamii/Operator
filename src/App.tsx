@@ -433,6 +433,16 @@ function BlockRush({ranked,rankedSubmission,onEvent,onFinish}:{ranked:boolean;ra
   const colors = ["cyan","lime","violet"];
   const [board,setBoard]=useState(()=>Array.from({length:88},()=>colors[rand(3)]));
   const initialTime=30; const [score,setScore]=useState(0); const [time,setTime]=useState(initialTime); const [done,setDone]=useState(false);
+  function hasPlayableGroup(candidate:Array<string|null>){
+    const visited=new Set<number>();
+    for(let start=0;start<candidate.length;start+=1){
+      if(!candidate[start]||visited.has(start))continue;
+      const color=candidate[start],group=new Set<number>(),queue=[start];
+      while(queue.length){const index=queue.pop()!;if(group.has(index)||candidate[index]!==color)continue;group.add(index);visited.add(index);const row=Math.floor(index/11),column=index%11;[index-11,index+11,index-1,index+1].forEach(next=>{if(next>=0&&next<88&&Math.floor(next/11)>=row-1&&Math.floor(next/11)<=row+1&&Math.abs((next%11)-column)<=1)queue.push(next)})}
+      if(group.size>=3)return true;
+    }
+    return false;
+  }
   useEffect(()=>{ if(done)return; const t=setInterval(()=>setTime(x=>{if(x<=1){clearInterval(t);setDone(true);onFinish({score,xp:150,time:30});return 0}return x-1}),1000); return()=>clearInterval(t)},[done,onFinish]);
   function click(i:number){
     if(done)return; const col=board[i]; const seen=new Set<number>(), q=[i];
@@ -442,7 +452,8 @@ function BlockRush({ranked,rankedSubmission,onEvent,onFinish}:{ranked:boolean;ra
     const a=board.map((v,j)=>seen.has(j) ? null : v).filter(Boolean) as string[];
     const next=[...Array(88-a.length).fill(null),...a];
     setBoard(next); setScore(s=>s+seen.size*seen.size*10);
-    if(!a.length){setDone(true);onFinish({score:score+seen.size*seen.size*10,xp:150,time:30-time})}
+    const finalScore=score+seen.size*seen.size*10;
+    if(!a.length||!hasPlayableGroup(next)){setDone(true);onFinish({score:finalScore,xp:150,time:30-time})}
   }
   if(done){const preview={score,xp:150};return ranked?<RankedResult submission={rankedSubmission} preview={preview} onRestart={()=>{setBoard(Array.from({length:88},()=>colors[rand(3)]));setScore(0);setTime(30);setDone(false)}}/>:<ResultBox result={preview} onRestart={()=>{setBoard(Array.from({length:88},()=>colors[rand(3)]));setScore(0);setTime(30);setDone(false)}}/>}
   return <div className="challenge"><GameHUD label="BLOCK RUSH" value={String(score)} timer={`${time}s`}/><div className="block-board">{board.map((c,i)=><button key={i} className={`block ${c||"empty"}`} onClick={()=>click(i)}/>)}</div><p className="hint">Clear groups of 3+ matching nodes. Bigger groups = bigger score.</p></div>
@@ -459,11 +470,12 @@ function NimGrid({ranked,rankedSubmission,onEvent,onFinish}:{ranked:boolean;rank
 function NimPin({seed,rankedSubmission,onEvent,onFinish}:{seed?:string;rankedSubmission:RankedSubmission;onEvent:(event:Omit<GameEvent,"t">)=>void;onFinish:(r:Result)=>void}) {
   const initialPin = seed ? createPuzzle("nim-pin", seed) : null;
   const pin = initialPin?.gameId === "nim-pin" ? initialPin.pin : String(rand(9000)+1000);
-  const [input,setInput]=useState(""); const [time,setTime]=useState(12); const [done,setDone]=useState(false);
+  const [input,setInput]=useState(""); const [time,setTime]=useState(12); const [show,setShow]=useState(true); const [done,setDone]=useState(false);
+  useEffect(()=>{const timer=window.setTimeout(()=>setShow(false),2500);return()=>window.clearTimeout(timer)},[]);
   useEffect(()=>{if(done)return;const t=setInterval(()=>setTime(x=>{if(x<=.1){setDone(true);onFinish({score:0,xp:25});return 0}return x-.1}),100);return()=>clearInterval(t)},[done,onFinish]);
-  function key(k:string){if(done)return; const n=input+k;if(n.length<=4)setInput(n); if(n.length===4){onEvent({type:"key",value:n});if(n===pin){const score=Math.max(100,Math.round(time*100));setDone(true);onFinish({score,xp:125,time:12-time})}else{setDone(true);onFinish({score:0,xp:25})}}}
+  function key(k:string){if(done||show)return; const n=input+k;if(n.length<=pin.length)setInput(n); if(n.length===pin.length){onEvent({type:"key",value:n});if(n===pin){const score=Math.max(100,Math.round(time*100));setDone(true);onFinish({score,xp:125,time:12-time})}else{setDone(true);onFinish({score:0,xp:25})}}}
   if(done){const preview={score:input===pin?Math.max(100,Math.round(time*100)):0,xp:input===pin?125:25};return seed?<RankedResult submission={rankedSubmission} preview={preview} onRestart={()=>{setInput("");setTime(12);setDone(false)}}/>:<ResultBox result={preview} onRestart={()=>{setInput("");setTime(12);setDone(false)}}/>}
-  return <div className="challenge narrow"><GameHUD label="NIM PIN" value="4 DIGITS" timer={`${time.toFixed(1)}s`}/><div className="pin-display">{input.padEnd(4,"_")}</div><div className="keypad">{["1","2","3","4","5","6","7","8","9","0"].map(k=><button key={k} onClick={()=>key(k)}>{k}</button>)}</div><p className="hint">Generated challenge. No real wallet PIN is requested.</p></div>
+  return <div className="challenge narrow"><GameHUD label="NIM PIN" value={show?"MEMORIZE":`${pin.length} DIGITS`} timer={`${time.toFixed(1)}s`}/><div className="pin-display">{show?pin:input.padEnd(pin.length,"_")}</div>{show?<p className="hint">Memorize the generated PIN. Input unlocks in 2.5 seconds.</p>:<><div className="keypad">{["1","2","3","4","5","6","7","8","9","0"].map(k=><button key={k} onClick={()=>key(k)}>{k}</button>)}</div><p className="hint">Generated challenge. No real wallet PIN is requested.</p></>}</div>
 }
 
 function Sequence({seed,rankedSubmission,onEvent,onFinish}:{seed?:string;rankedSubmission:RankedSubmission;onEvent:(event:Omit<GameEvent,"t">)=>void;onFinish:(r:Result)=>void}) {

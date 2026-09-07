@@ -46,22 +46,25 @@ export async function startRun(gameId: string, mode: RunMode) {
   return await response.json() as Run;
 }
 
+export type NextTarget = { rank: number; username: string; score: number; pointsAway: number };
+export type RankedPeriod = "all" | "daily" | "weekly" | "season";
+
 export async function submitRun(runId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/runs/${runId}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Run was rejected");
-  return await response.json() as { score: number; xp: number; rank: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean };
+  return await response.json() as { score: number; xp: number; rank: number | null; previousRank?: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; displayGrade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean; streak?: number; nextTarget?: NextTarget | null };
 }
 
-export async function getLeaderboard(gameId: string, period: "daily" | "all" = "all") {
+export async function getLeaderboard(gameId: string = "all", period: RankedPeriod = "all") {
   const response = await fetch(`${API_URL}/leaderboard?game=${encodeURIComponent(gameId)}&period=${period}`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load leaderboard");
-  return await response.json() as Array<{ username: string; score: number; created_at: string }>;
+  return await response.json() as Array<{ username: string; score: number; created_at: string | null; rank: number; isYou?: boolean }>;
 }
 
 export async function getMe() {
   const response = await fetch(`${API_URL}/me`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load operator profile");
-  return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; verifiedRuns: number };
+  return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; displayGrade?: string; verifiedRuns: number; level?: number };
 }
 
 export type CompetitiveSummary = {
@@ -158,4 +161,44 @@ export async function submitChallenge(challengeId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Challenge run was rejected");
   return await response.json() as { score: number; xp: number; rank?: number | null; previousBest?: number | null; improvement?: number; personalBest?: boolean; rating?: number; grade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
+}
+
+export type DashboardGame = { gameId: string; best: number | null; rank: number | null; ranked: boolean; challengeCapable: boolean };
+export type DashboardChallenge = { challengeId: string; gameId: string; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string; expiresAt: string; incoming: boolean };
+export type Dashboard = {
+  authenticated: boolean;
+  operator: {
+    username: string | null;
+    rating: number;
+    grade: string;
+    displayGrade: string;
+    verifiedRuns: number;
+    xp: number;
+    level: number;
+    xpIntoLevel: number;
+    xpForLevel: number;
+    nextLevelXp: number;
+    streak: number;
+    globalRank: number | null;
+    nextGrade?: string | null;
+    ratingToNext?: number;
+    progressPercent?: number;
+  } | null;
+  daily: { gameId: string; endsAt: string; score: number | null; rank: number | null; completed: boolean; topScore: number | null; pointsToNext: number | null };
+  games: DashboardGame[];
+  nearbyPlayers: Array<{ rank: number; username: string; score: number; isYou: boolean }>;
+  nextTarget: NextTarget | null;
+  challenges: DashboardChallenge[];
+  achievements: { unlocked: number; total: number; items: Achievement[] };
+  matchHistory: Array<{ gameId: string; mode: string; score: number; xp: number; createdAt: string }>;
+  specialties: Array<{ gameId: string; best: number | null; rank: number | null }>;
+  stats: { gamesPlayed: number; wins: number; winRate: number | null; bestScore: number; xp: number } | null;
+  streakDays: Array<{ day: string; completed: boolean }>;
+  prompts?: string[];
+};
+
+export async function getDashboard() {
+  const response = await fetch(`${API_URL}/dashboard`, { credentials: "include" });
+  if (!response.ok) throw new Error("Could not load operations dashboard");
+  return await response.json() as Dashboard;
 }

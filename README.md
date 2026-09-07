@@ -8,7 +8,7 @@ OPERATOR is a competitive skill platform where players enter short, high-pressur
 
 OPERATOR is a browser and Nimiq Pay skill platform. Each challenge is a fast test of memory, timing, sequence recognition, or precision. Players can practice locally as guests or connect a Nimiq wallet to enter ranked runs.
 
-The product promise is simple: **don’t just play. Prove it.**
+The product promise is simple: **donï¿½t just play. Prove it.**
 
 ## Why Nimiq
 
@@ -144,14 +144,14 @@ Run the app locally with `npm run dev` to view the OPERATOR interface. The curre
 
 Brand assets are in `public/logo/`, with the browser icon at `public/favicon.svg`:
 
-- `operator-primary.svg` — primary lockup for the dark interface.
-- `operator-horizontal.svg` — navbar and banner lockup.
-- `operator-mark.svg` — cyan network mark with yellow operator node.
-- `operator-wordmark.svg` — wordmark-only treatment.
-- `operator-dark.svg` — full-color lockup for light backgrounds.
-- `operator-light.svg` — full-color lockup for dark backgrounds.
-- `operator-monochrome.svg` — one-color fallback.
-- `operator-icon.svg` — app and favicon icon.
+- `operator-primary.svg` ï¿½ primary lockup for the dark interface.
+- `operator-horizontal.svg` ï¿½ navbar and banner lockup.
+- `operator-mark.svg` ï¿½ cyan network mark with yellow operator node.
+- `operator-wordmark.svg` ï¿½ wordmark-only treatment.
+- `operator-dark.svg` ï¿½ full-color lockup for light backgrounds.
+- `operator-light.svg` ï¿½ full-color lockup for dark backgrounds.
+- `operator-monochrome.svg` ï¿½ one-color fallback.
+- `operator-icon.svg` ï¿½ app and favicon icon.
 
 For a hackathon demo, show this sequence:
 

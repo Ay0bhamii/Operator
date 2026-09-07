@@ -55,13 +55,20 @@ export async function submitRun(runId: string, events: unknown[]) {
 export async function getLeaderboard(gameId: string, period: "daily" | "all" = "all") {
   const response = await fetch(`${API_URL}/leaderboard?game=${encodeURIComponent(gameId)}&period=${period}`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load leaderboard");
-  return await response.json() as Array<{ address: string; score: number; created_at: string }>;
+  return await response.json() as Array<{ username: string; score: number; created_at: string }>;
 }
 
 export async function getMe() {
   const response = await fetch(`${API_URL}/me`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load operator profile");
-  return await response.json() as { address: string | null; xp: number; streak: number; rating: number; grade: string; verifiedRuns: number };
+  return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; verifiedRuns: number };
+}
+
+export async function updateUsername(username: string) {
+  const response = await fetch(`${API_URL}/me/username`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) });
+  const body = await response.json() as { username?: string; error?: string };
+  if (!response.ok) throw new Error(body.error || "Could not save username");
+  return body as { username: string };
 }
 
 export async function trackEvent(event: "wallet_connected" | "run_started" | "run_verified" | "run_rejected" | "reward_requested", gameId?: string) {

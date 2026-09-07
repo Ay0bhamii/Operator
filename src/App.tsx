@@ -18,6 +18,7 @@ import {
   submitChallenge,
   submitRun,
   trackEvent,
+  updateUsername,
   type DailyOperation,
   type DailyStatus,
   type Run
@@ -61,17 +62,17 @@ function App() {
   const runStartedAt=useRef(0);
   const [rankedSubmission,setRankedSubmission]=useState<RankedSubmission>({state:"idle"});
   const [dailyOperation,setDailyOperation]=useState<DailyOperation|null>(null);
-  const [leaderboard,setLeaderboard]=useState<Array<{address:string;score:number}>>([]);
+  const [leaderboard,setLeaderboard]=useState<Array<{username:string;score:number}>>([]);
   const [leaderboardGame,setLeaderboardGame]=useState<GameId>("nim-pin");
   const [verifiedBest,setVerifiedBest]=useState(0);
-  const [profile,setProfile]=useState<{rating:number;grade:string;verifiedRuns:number;streak:number}|null>(null);
+  const [profile,setProfile]=useState<{username:string|null;rating:number;grade:string;verifiedRuns:number;streak:number}|null>(null);
   const [xp,setXp]=useState(()=>Number(localStorage.getItem("nhl-xp")||0));
   const [scores,setScores]=useState<Record<string,number>>(()=>JSON.parse(localStorage.getItem("nhl-scores")||"{}"));
   const [dailyDone,setDailyDone]=useState(()=>localStorage.getItem("nhl-daily")===new Date().toISOString().slice(0,10));
 
   useEffect(()=>localStorage.setItem("nhl-xp",String(xp)),[xp]);
   useEffect(()=>localStorage.setItem("nhl-scores",JSON.stringify(scores)),[scores]);
-  useEffect(()=>{getMe().then(profile=>{if(profile.address){setWallet(profile.address);setXp(profile.xp);setProfile(profile)}}).catch(()=>{})},[]);
+  useEffect(()=>{getMe().then(profile=>{if(profile.address){setWallet(profile.address);setXp(profile.xp);setProfile(profile);if(!profile.username)setUsernamePrompt(true)}}).catch(()=>{})},[]);
   useEffect(()=>{getLeaderboard(leaderboardGame).then(rows=>setLeaderboard(rows)).catch(()=>setLeaderboard([]))},[leaderboardGame]);
   useEffect(()=>{getDaily().then(setDailyOperation).catch(()=>setDailyOperation(null))},[]);
   useEffect(()=>{if(wallet){getDailyStatus().then(setDailyStatus).catch(()=>setDailyStatus(null));} else { setDailyStatus(null);} },[wallet]);
@@ -86,6 +87,11 @@ function App() {
   const [walletError,setWalletError]=useState<string|null>(null);
   const [authPrompt,setAuthPrompt]=useState(false);
   const [pendingRankedGame,setPendingRankedGame]=useState<GameId|null>(null);
+  const [pendingRankedMode,setPendingRankedMode]=useState<"ranked"|"daily">("ranked");
+  const [usernamePrompt,setUsernamePrompt]=useState(false);
+  const [usernameInput,setUsernameInput]=useState("");
+  const [usernameError,setUsernameError]=useState<string|null>(null);
+  const [usernameSaving,setUsernameSaving]=useState(false);
 
   function triggerFeedback(kind: "tap" | "success" | "error" = "tap") {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -114,7 +120,7 @@ function App() {
       if(a){
         setWallet(a);
         trackEvent("wallet_connected");
-        getMe().then(profile=>{setXp(profile.xp);setProfile(profile)}).catch(()=>{});
+        getMe().then(profile=>{setXp(profile.xp);setProfile(profile);if(!profile.username)setUsernamePrompt(true)}).catch(()=>{});
       }
     } catch (e) {
       setWalletError(e instanceof Error ? e.message : "Wallet connection failed");
@@ -122,11 +128,13 @@ function App() {
   }
 
   useEffect(()=>{
-    if(!wallet || !pendingRankedGame) return;
+    if(!wallet || !pendingRankedGame || !profile) return;
+    if(!profile.username){setUsernamePrompt(true);return;}
     const id=pendingRankedGame;
+    const mode=pendingRankedMode;
     setPendingRankedGame(null);
-    void launchGame(id,"ranked");
-  },[wallet,pendingRankedGame]);
+    void launchGame(id,mode);
+  },[wallet,pendingRankedGame,pendingRankedMode,profile]);
 
   async function signOut(){
     try { await logoutSession(); } catch {}
@@ -135,6 +143,9 @@ function App() {
     setRankedSubmission({state:"idle"});
     setVerifiedBest(0);
     setProfile(null);
+    setUsernamePrompt(false);
+    setUsernameInput("");
+    setUsernameError(null);
     setWalletError(null);
     setRewardError(null);
   }
@@ -194,13 +205,46 @@ function App() {
     setGame(id);
   }
 
-  function requestRankedGame(id: GameId) {
+  function requestRankedGame(id: GameId, mode: "ranked"|"daily" = "ranked") {
     if(!wallet){
       setPendingRankedGame(id);
+      setPendingRankedMode(mode);
       setAuthPrompt(true);
       return;
     }
-    void launchGame(id,"ranked");
+    if(!profile?.username){
+      setPendingRankedGame(id);
+      setPendingRankedMode(mode);
+      setUsernamePrompt(true);
+      return;
+    }
+    void launchGame(id,mode);
+  }
+
+  async function saveUsername(){
+    const username=usernameInput.trim();
+    if(!/^[A-Za-z0-9_-]{3,20}$/.test(username)){
+      setUsernameError("Use 3-20 letters, numbers, _ or -.");
+      return;
+    }
+    setUsernameSaving(true);
+    setUsernameError(null);
+    try{
+      await updateUsername(username);
+      const updated=await getMe();
+      setProfile(updated);
+      getLeaderboard(leaderboardGame).then(setLeaderboard).catch(()=>{});
+      setUsernameInput("");
+      setUsernamePrompt(false);
+      const id=pendingRankedGame;
+      const mode=pendingRankedMode;
+      setPendingRankedGame(null);
+      if(id) void launchGame(id,mode);
+    }catch(error){
+      setUsernameError(error instanceof Error ? error.message : "Could not save username");
+    }finally{
+      setUsernameSaving(false);
+    }
   }
 
   async function finish(id:GameId,r:Result){
@@ -214,7 +258,7 @@ function App() {
         setVerifiedBest("best" in result ? result.best : result.score);
         setScores(x=>({...x,[id]:Math.max(x[id]||0,"best" in result ? result.best : result.score)}));
         setXp(x=>x+result.xp);
-        getMe().then(profile=>{setXp(profile.xp);setProfile(profile)}).catch(()=>{});
+        getMe().then(profile=>{setXp(profile.xp);setProfile(profile);if(!profile.username)setUsernamePrompt(true)}).catch(()=>{});
         if(activeRun.mode === "daily"){
           setDailyDone(true);
           localStorage.setItem("nhl-daily",new Date().toISOString().slice(0,10));
@@ -237,14 +281,15 @@ function App() {
     <section className="wallet-status">{wallet ? <><span className="wallet-live">LIVE / VERIFIED SESSION</span><span>{wallet}</span></> : walletError ? <><span className="wallet-error">WALLET CONNECTION FAILED</span><span>{walletError}</span></> : <><span>WALLET</span><span>{isNimiqPay()?"Nimiq Pay detected - ready to verify":"Connect with Nimiq Hub to play ranked"}</span></>}</section>
     <section className="hero-editorial"><div className="hero-copy"><div className="kicker"><span/>DAILY OPERATION - VERIFIED SKILL RUN</div><h1>DAILY<br/><em>{dailyGame?.name.toUpperCase() ?? "NIM PIN"}</em></h1><p>Complete today's challenge and climb the day's leaderboard before the timer resets.</p><div className="hero-actions"><button className="gold-btn" disabled={!dailyOperation} onClick={()=>dailyOperation && launchGame(dailyOperation.gameId as GameId, wallet ? "daily" : "practice")}>{wallet?"PLAY DAILY":"PRACTICE DAILY"} <b>-&gt;</b></button><a className="text-btn" href="#feature">VIEW OPERATION -&gt;</a></div></div><div className="hero-emblem"><div className="orbit a"/><div className="orbit b"/><div className="core"><img src="/logo/operator-mark.svg" alt="OPERATOR"/></div><small>DAILY / 01</small></div></section>
     <section className="season-strip"><div><small>SEASON</small><b>01</b></div><div><small>OPERATORS</small><b>-</b></div><div><small>RANKED RUNS</small><b>-</b></div><div><small>STATUS</small><b className="live">LIVE / ONLINE</b></div></section>
-    <section id="feature" className="feature-section"><div className="section-label">01 <span>DAILY OPERATION</span></div><div className="feature-card daily-card"><div className="daily-content"><small>TODAY'S CHALLENGE</small><h2>{dailyGame?.name.toUpperCase() ?? "NIM PIN"}</h2><div className="daily-countdown">TIME / {formatCountdown(dailyRemaining)} remaining</div><div className="daily-meta"><span>1 attempt</span><span>Your rank: -</span></div><button className="gold-btn compact" onClick={()=>{triggerFeedback("tap"); dailyOperation && launchGame(dailyOperation.gameId as GameId, wallet ? "daily" : "practice");}}>{wallet ? "PLAY" : "PRACTICE"}</button></div></div></section>
+    <section id="feature" className="feature-section"><div className="section-label">01 <span>DAILY OPERATION</span></div><div className="feature-card daily-card"><div className="daily-content"><small>TODAY'S CHALLENGE</small><h2>{dailyGame?.name.toUpperCase() ?? "NIM PIN"}</h2><div className="daily-countdown">TIME / {formatCountdown(dailyRemaining)} remaining</div><div className="daily-meta"><span>1 attempt</span><span>Your rank: -</span></div><button className="gold-btn compact" onClick={()=>{triggerFeedback("tap"); dailyOperation && (wallet ? requestRankedGame(dailyOperation.gameId as GameId,"daily") : launchGame(dailyOperation.gameId as GameId,"practice"));}}>{wallet ? "PLAY" : "PRACTICE"}</button></div></div></section>
     <section id="ranked" className="lab-section"><div className="section-heading"><div><span>02</span><h2>RANKED GAMES</h2></div><p>{wallet ? "WALLET VERIFIED" : "SIGN IN TO COMPETE"}<br/>{wallet ? "RESULTS COUNT" : "RESULTS STAY LOCKED"}</p></div><div className="game-list">{games.filter(g=>rankedGames.includes(g.id)).map((g,i)=>{const Icon=g.icon;return <button className={`editorial-game ${wallet ? "" : "ranked-locked"}`} key={g.id} onClick={()=>{triggerFeedback("tap"); requestRankedGame(g.id)}}><span>0{i+1}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><small>{wallet ? "RANKED" : "SIGN IN TO PLAY"}</small><strong>-&gt;</strong></button>})}</div></section>
     <section id="practice" className="lab-section"><div className="section-heading"><div><span>03</span><h2>PRACTICE GAMES</h2></div><p>PLAY FREELY<br/>NO SIGN-IN REQUIRED</p></div><div className="game-list">{games.map((g,i)=>{const Icon=g.icon;return <button className="editorial-game" key={g.id} onClick={()=>{triggerFeedback("tap"); void launchGame(g.id,"practice")}}><span>0{String(i+1).padStart(2,"0")}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><small>PRACTICE</small><strong>-&gt;</strong></button>})}</div></section>
-    <section id="leaderboard" className="leaderboard-section"><div className="section-heading"><div><span>03</span><h2>RANKINGS</h2></div><p>GLOBAL<br/>VERIFIED</p></div><div className="leaderboard-table"><div className="rank-highlight"><div className="rank-pill">{getGlobalRankText(globalRank, pointsAway)}</div><div className="rank-gap">{getGlobalRankText(globalRank, pointsAway, true)}</div><button className="challenge-player" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>CHALLENGE PLAYER</button></div>{leaderboard.length ? leaderboard.map((row,index)=><div className="rank-row" key={row.address}><span>{String(index+1).padStart(2,"0")}</span><span>{row.address.slice(0,6)}...{row.address.slice(-3)}</span><b>{row.score.toLocaleString()}</b><i>-&gt;</i></div>) : <div className="leaderboard-empty"><b>{wallet ? "NO VERIFIED SCORES YET" : "CONNECT TO RANK"}</b><span>{wallet ? "Complete a ranked challenge to appear here." : "Guest scores stay on this device and never enter the board."}</span></div>}<div className="your-rank"><span>YOUR BEST</span><b>{wallet ? (verifiedBest || scores[leaderboardGame] || "-") : "GUEST"}</b><strong>{wallet ? "VERIFIED OPERATOR" : "VERIFICATION REQUIRED"}</strong></div></div></section>
+    <section id="leaderboard" className="leaderboard-section"><div className="section-heading"><div><span>03</span><h2>RANKINGS</h2></div><p>GLOBAL<br/>VERIFIED</p></div><div className="leaderboard-table"><div className="rank-highlight"><div className="rank-pill">{getGlobalRankText(globalRank, pointsAway)}</div><div className="rank-gap">{getGlobalRankText(globalRank, pointsAway, true)}</div><button className="challenge-player" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>CHALLENGE PLAYER</button></div>{leaderboard.length ? leaderboard.map((row,index)=><div className="rank-row" key={`${row.username}-${index}`}><span>{String(index+1).padStart(2,"0")}</span><span>{row.username}</span><b>{row.score.toLocaleString()}</b><i>-&gt;</i></div>) : <div className="leaderboard-empty"><b>{wallet ? "NO VERIFIED SCORES YET" : "CONNECT TO RANK"}</b><span>{wallet ? "Complete a ranked challenge to appear here." : "Guest scores stay on this device and never enter the board."}</span></div>}<div className="your-rank"><span>YOUR BEST</span><b>{wallet ? (verifiedBest || scores[leaderboardGame] || "-") : "GUEST"}</b><strong>{wallet ? "VERIFIED OPERATOR" : "VERIFICATION REQUIRED"}</strong></div></div></section>
     <section className="friend-section"><div className="section-label">04 <span>CHALLENGE A FRIEND</span></div><div className="friend-card"><div className="friend-copy"><h3>Same puzzle.</h3><h3>Same seed.</h3><h3>One winner.</h3></div><button className="copy-btn" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>{challengeCopied ? "COPIED" : "COPY CHALLENGE"}</button></div></section>
-    <section id="profile" className="profile-section"><div className="profile-card"><div className="profile-head"><div><span>05</span><small>OPERATOR PROFILE</small></div><div>LVL <b>{level}</b></div></div><div className="profile-main"><div><small>OPERATOR RATING</small><div className="big-xp">{profile?.rating?.toLocaleString()||"-"}</div><div className="xp-line"><i style={{width:`${profile ? Math.min(100,profile.rating/30) : 0}%`}}/></div><small>{profile ? `${profile.grade} GRADE - ${profile.verifiedRuns} VERIFIED RUNS` : "CONNECT WALLET TO BUILD RATING"}</small></div><div className="profile-stats"><div><small>CURRENT XP</small><b>{xp.toLocaleString()}</b></div><div><small>STREAK</small><b>{profile?.streak ? `${profile.streak} DAYS` : "-"}</b></div><div><small>PLAYER</small><b>{wallet?"NIM":"GUEST"}</b></div></div></div></div></section>
+    <section id="profile" className="profile-section"><div className="profile-card"><div className="profile-head"><div><span>05</span><small>OPERATOR PROFILE</small></div><div>LVL <b>{level}</b></div></div><div className="profile-main"><div><small>OPERATOR RATING</small><div className="big-xp">{profile?.rating?.toLocaleString()||"-"}</div><div className="xp-line"><i style={{width:`${profile ? Math.min(100,profile.rating/30) : 0}%`}}/></div><small>{profile ? `${profile.grade} GRADE - ${profile.verifiedRuns} VERIFIED RUNS` : "CONNECT WALLET TO BUILD RATING"}</small></div><div className="profile-stats"><div><small>USERNAME</small><b>{profile?.username || "UNNAMED PLAYER"}</b>{wallet && <button className="profile-edit" onClick={()=>{setUsernameInput(profile?.username || "");setUsernameError(null);setUsernamePrompt(true)}}>EDIT</button>}</div><div><small>CURRENT XP</small><b>{xp.toLocaleString()}</b></div><div><small>STREAK</small><b>{profile?.streak ? `${profile.streak} DAYS` : "-"}</b></div></div></div></div></section>
     <footer><span>OPERATOR</span><span>COMPETITIVE SKILL CHALLENGES, POWERED BY NIMIQ</span><span>NO PRIVATE KEYS ARE EVER EXPOSED</span></footer>
     {authPrompt && <div className="auth-backdrop" role="presentation" onClick={()=>setAuthPrompt(false)}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" onClick={event=>event.stopPropagation()}><button className="auth-close" aria-label="Close sign-in prompt" onClick={()=>setAuthPrompt(false)}>X</button><small>RANKED ACCESS</small><h2 id="auth-title">Sign in to play Ranked</h2><p>Practice games are always available. Connect your Nimiq wallet to submit this result to the verified leaderboard.</p><button className="gold-btn" onClick={()=>{setAuthPrompt(false); void connect();}}>CONNECT WALLET -&gt;</button></div></div>}
+    {usernamePrompt && wallet && <div className="auth-backdrop" role="presentation"><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="username-title"><button className="auth-close" aria-label="Close username setup" onClick={()=>setUsernamePrompt(false)}>LATER</button><small>LEADERBOARD IDENTITY</small><h2 id="username-title">Choose your username</h2><p>This is the name other players will see on the leaderboard.</p><input className="username-input" value={usernameInput} onChange={event=>{setUsernameInput(event.target.value);setUsernameError(null)}} placeholder="Enter username" maxLength={20} autoFocus/><small>3-20 letters, numbers, _ or -</small>{usernameError && <div className="username-error">{usernameError}</div>}<button className="gold-btn username-submit" disabled={usernameSaving} onClick={()=>void saveUsername()}>{usernameSaving ? "SAVING..." : "CONTINUE -&gt;"}</button></div></div>}
   </main>
 }
 

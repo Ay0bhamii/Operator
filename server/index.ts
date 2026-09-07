@@ -38,7 +38,7 @@ const rankedGames = new Set<RankedGameId>(["block-rush", "nim-pin", "memory", "v
 const gameLimits: Record<string, number> = { "block-rush": 30000, "nim-pin": 12000, memory: 2500, vault: 10000, sync: 30000 };
 
 await db.query(`
-CREATE TABLE IF NOT EXISTS addresses (address TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL);
+CREATE TABLE IF NOT EXISTS addresses (address TEXT PRIMARY KEY, username TEXT, created_at TIMESTAMPTZ NOT NULL);
 CREATE TABLE IF NOT EXISTS login_nonces (nonce TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, address TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL);
 CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, address TEXT NOT NULL, game_id TEXT NOT NULL, mode TEXT NOT NULL, day TEXT, seed TEXT NOT NULL, started_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ);
@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS analytics_events (id SERIAL PRIMARY KEY, event TEXT N
 CREATE TABLE IF NOT EXISTS friend_challenges (id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, game_id TEXT NOT NULL, creator_address TEXT NOT NULL, opponent_address TEXT, seed TEXT NOT NULL, creator_score INTEGER, opponent_score INTEGER, created_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS scores_daily_unique ON scores(address, game_id, day) WHERE mode = 'daily';
 `);
+
+try { await db.query("ALTER TABLE addresses ADD COLUMN username TEXT"); } catch {}
+try { await db.query("CREATE UNIQUE INDEX IF NOT EXISTS addresses_username_unique ON addresses(LOWER(username)) WHERE username IS NOT NULL"); } catch {}
 
 const now = () => Date.now();
 const iso = (value: number) => new Date(value).toISOString();
@@ -156,7 +159,7 @@ app.post("/auth/verify", async c => {
   } catch { return c.json({ error: "invalid signature encoding" }, 401); }
   await db.query("UPDATE login_nonces SET consumed_at = $1 WHERE nonce = $2 AND consumed_at IS NULL", [iso(now()), nonceMatch![1]]);
   const address = body.signer.split(" ").join("").toUpperCase();
-  await db.query("INSERT INTO addresses VALUES ($1, $2) ON CONFLICT (address) DO NOTHING", [address, iso(now())]);
+  await db.query("INSERT INTO addresses(address, created_at) VALUES ($1, $2) ON CONFLICT (address) DO NOTHING", [address, iso(now())]);
   const id = randomBytes(24).toString("hex");
   await db.query("INSERT INTO sessions VALUES ($1, $2, $3)", [id, address, iso(now() + 30 * 24 * 60 * 60_000)]);
   c.header("Set-Cookie", cookie("arcade_session", `${id}.${signSession(id)}`, 30 * 24 * 60 * 60));
@@ -274,20 +277,38 @@ app.get("/leaderboard", async c => {
   const game = c.req.query("game"); const period = c.req.query("period") === "daily" ? "daily" : "all";
   if (!game) return c.json([]);
   const rows = period === "daily"
-    ? (await db.query("SELECT address, score, created_at FROM scores WHERE game_id = $1 AND mode = 'daily' ORDER BY score DESC, created_at ASC LIMIT 50", [game])).rows
-    : (await db.query("SELECT address, MAX(score) AS score, MIN(created_at) AS created_at FROM scores WHERE game_id = $1 AND mode IN ('daily','ranked') GROUP BY address ORDER BY score DESC, created_at ASC LIMIT 50", [game])).rows;
+    ? (await db.query("SELECT COALESCE(NULLIF(a.username, ''), 'Unnamed Player') AS username, s.score, s.created_at FROM scores s LEFT JOIN addresses a ON a.address = s.address WHERE s.game_id = $1 AND s.mode = 'daily' ORDER BY s.score DESC, s.created_at ASC LIMIT 50", [game])).rows
+    : (await db.query("SELECT COALESCE(NULLIF(a.username, ''), 'Unnamed Player') AS username, MAX(s.score) AS score, MIN(s.created_at) AS created_at FROM scores s LEFT JOIN addresses a ON a.address = s.address WHERE s.game_id = $1 AND s.mode IN ('daily','ranked') GROUP BY s.address, a.username ORDER BY score DESC, created_at ASC LIMIT 50", [game])).rows;
   return c.json(rows);
 });
 
 app.get("/me", async c => {
   const address = await sessionAddress(c);
-  if (!address) return c.json({ address: null, xp: 0, streak: 0 });
+  if (!address) return c.json({ address: null, username: null, xp: 0, streak: 0, rating: 0, grade: "UNRANKED", verifiedRuns: 0 });
+  const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
   const { rows } = await db.query("SELECT COALESCE(SUM(xp), 0) AS xp, COUNT(*) AS verified_runs, COALESCE(AVG(score), 0) AS average_score FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address]);
   const xp = Number(rows[0].xp);
   const verifiedRuns = Number(rows[0].verified_runs);
   const rating = Math.min(3000, 1000 + Math.round(Number(rows[0].average_score) / 10) + verifiedRuns * 5);
   const grade = rating >= 2400 ? "DIAMOND" : rating >= 1900 ? "PLATINUM" : rating >= 1500 ? "GOLD" : rating >= 1200 ? "SILVER" : "BRONZE";
-  return c.json({ address, xp, streak: 0, rating, grade, verifiedRuns });
+  return c.json({ address, username: account?.username || null, xp, streak: 0, rating, grade, verifiedRuns });
+});
+
+app.put("/me/username", async c => {
+  const address = await sessionAddress(c);
+  if (!address) return c.json({ error: "ranked session required" }, 401);
+  let body: { username?: string } = {};
+  try { body = await c.req.json<{ username?: string }>(); } catch { return c.json({ error: "invalid request body" }, 400); }
+  const username = body.username?.trim() || "";
+  if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) return c.json({ error: "Username must be 3-20 characters using letters, numbers, _ or -" }, 400);
+  const existing = (await db.query("SELECT address FROM addresses WHERE LOWER(username) = LOWER($1) AND address <> $2", [username, address])).rows[0];
+  if (existing) return c.json({ error: "Username already taken" }, 409);
+  try {
+    await db.query("UPDATE addresses SET username = $1 WHERE address = $2", [username, address]);
+  } catch {
+    return c.json({ error: "Username already taken" }, 409);
+  }
+  return c.json({ username });
 });
 
 if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) serve({ fetch: app.fetch, port: Number(process.env.PORT || 8787) });

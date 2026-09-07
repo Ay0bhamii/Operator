@@ -26,6 +26,13 @@ function seeded(seed: string) {
   };
 }
 
+/** Difficulty is encoded into a server-issued seed, so the client and replay verifier
+ * always derive the identical challenge without trusting a client-selected level. */
+export function difficultyTier(seed: string) {
+  const match = seed.match(/^t([1-4]):/);
+  return match ? Number(match[1]) : 2;
+}
+
 function requireEvents(events: GameEvent[]) {
   if (!Array.isArray(events) || events.length === 0) return "no events";
   let previous = -1;
@@ -38,16 +45,17 @@ function requireEvents(events: GameEvent[]) {
 
 export function createPuzzle(gameId: Exclude<RankedGameId, "block-rush" | "sync">, seed: string): Puzzle {
   const random = seeded(`${gameId}:${seed}`);
+  const tier = difficultyTier(seed);
   if (gameId === "nim-pin") {
-    return { gameId, pin: String(Math.floor(random() * 9000) + 1000) };
+    return { gameId, pin: Array.from({ length: 2 + tier }, () => String(Math.floor(random() * 10))).join("") };
   }
   if (gameId === "sequence") {
-    return { gameId, sequence: Array.from({ length: 12 }, () => sequenceChars[Math.floor(random() * sequenceChars.length)]) };
+    return { gameId, sequence: Array.from({ length: 8 + tier * 2 }, () => sequenceChars[Math.floor(random() * sequenceChars.length)]) };
   }
   if (gameId === "nim-lock" || gameId === "vault") {
-    return { gameId, targetAngles: Array.from({ length: gameId === "vault" ? 5 : 4 }, () => Math.floor(random() * 8) * 45) };
+    return { gameId, targetAngles: Array.from({ length: gameId === "vault" ? 3 + tier : 2 + tier }, () => Math.floor(random() * 8) * 45) };
   }
-  return { gameId, tokens: Array.from({ length: 6 }, () => memoryTokens[Math.floor(random() * memoryTokens.length)]) };
+  return { gameId, tokens: Array.from({ length: 4 + tier }, () => memoryTokens[Math.floor(random() * memoryTokens.length)]) };
 }
 
 export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]): ReplayResult {

@@ -55,12 +55,24 @@ const games: { id: GameId; name: string; subtitle: string; icon: any; difficulty
   { id: "sync", name: "Sync", subtitle: "Time the packet inside the target", icon: Network, difficulty: "Medium" }
 ];
 
+const gameBriefings: Record<GameId, { objective: string; controls: string; tip: string }> = {
+  "block-rush": { objective: "Clear matching node groups to build the highest score.", controls: "Tap groups of 3 or more matching blocks.", tip: "Bigger groups multiply your score." },
+  "nim-grid": { objective: "Track and hit the live node before time expires.", controls: "Tap the highlighted node.", tip: "Accuracy first; speed follows." },
+  "nim-pin": { objective: "Read the access PIN and enter it correctly.", controls: "Use the keypad to submit every digit.", tip: "A ranked PIN is generated from the server seed." },
+  sequence: { objective: "Memorize the signal and reproduce it in order.", controls: "Press each displayed key in sequence.", tip: "The sequence grows with your competitive tier." },
+  memory: { objective: "Memorize the operator tokens, then rebuild them.", controls: "Select the tokens in the original order.", tip: "Pause before choosing—one wrong token fails verification." },
+  "nim-lock": { objective: "Align every lock ring with its target marker.", controls: "Tap a ring to rotate it by 45 degrees.", tip: "Each verified run uses a deterministic target." },
+  vault: { objective: "Open the vault before the timer reaches zero.", controls: "Rotate every ring until its marker aligns.", tip: "Higher ranks receive more rings to solve." },
+  sync: { objective: "Synchronize packets inside the target window.", controls: "Press SYNC PACKET while the cursor is inside the zone.", tip: "Five verified hits complete the operation." },
+};
+
 const rand = (n: number) => Math.floor(Math.random() * n);
 const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5);
 
 function App() {
   const challengePath = window.location.pathname.match(/^\/challenge\/([^/]+)\/?$/);
   const [game,setGame]=useState<GameId|null>(null);
+  const [briefing,setBriefing]=useState<{ id: GameId; mode: "ranked" | "daily" | "practice" } | null>(null);
   const [wallet,setWallet]=useState<string|null>(null);
   const [activeRun,setActiveRun]=useState<Run|null>(null);
   const [challengeCopied,setChallengeCopied]=useState(false);
@@ -244,6 +256,10 @@ function App() {
   const rankedGames = ["block-rush", "nim-pin", "memory", "vault", "sync"];
 
   async function launchGame(id: GameId, mode: "ranked" | "daily" | "practice" = "ranked") {
+    setBriefing({ id, mode });
+  }
+
+  async function beginGame(id: GameId, mode: "ranked" | "daily" | "practice" = "ranked") {
     setActiveRun(null);
     setRankedSubmission({state:"idle"});
     eventsRef.current=[];
@@ -357,6 +373,7 @@ function App() {
     {view === "profile" && <section className="page-view profile-view"><div className="profile-identity"><span className="eyebrow">COMPETITIVE IDENTITY</span><h1>{operator?.username || profile?.username || "GUEST OPERATOR"}</h1><div><b>{operator?.displayGrade || "UNRANKED"}</b><strong>{operator?.rating?.toLocaleString() || "—"} RATING</strong></div><p>{operator?.streak ? `🔥 ${operator.streak} day streak` : "Your competitive record begins with a verified run."}</p>{wallet && <button className="profile-edit" onClick={()=>{setUsernameInput(profile?.username || "");setUsernameError(null);setUsernamePrompt(true)}}>EDIT USERNAME</button>}</div><div className="profile-data-grid"><div className="data-card"><span>STATISTICS</span><div className="stat-grid"><p><small>GAMES PLAYED</small><b>{dashboard?.stats?.gamesPlayed ?? 0}</b></p><p><small>CHALLENGE WINS</small><b>{dashboard?.stats?.wins ?? 0}</b></p><p><small>WIN RATE</small><b>{dashboard?.stats?.winRate !== null && dashboard?.stats?.winRate !== undefined ? `${dashboard.stats.winRate}%` : "—"}</b></p><p><small>BEST SCORE</small><b>{dashboard?.stats?.bestScore?.toLocaleString() ?? "—"}</b></p></div></div><div className="data-card"><span>SPECIALTIES</span>{dashboard?.specialties?.length ? dashboard.specialties.slice(0,4).map(item=><p className="specialty" key={item.gameId}><b>{games.find(game=>game.id===item.gameId)?.name || item.gameId}</b><strong>#{item.rank} · {item.best?.toLocaleString()}</strong></p>) : <p className="empty-retention">Your best games will appear after verified runs.</p>}</div><div className="data-card"><span>ACHIEVEMENTS · {dashboard?.achievements.unlocked ?? 0}/{dashboard?.achievements.total ?? 0}</span>{dashboard?.achievements.items.filter(item=>item.unlocked).slice(0,4).map(item=><p className="specialty" key={item.id}><b>✦ {item.name}</b><strong>{item.rarity}</strong></p>) || <p className="empty-retention">Connect to track progress.</p>}</div><div className="data-card"><span>MATCH HISTORY</span>{dashboard?.matchHistory?.length ? dashboard.matchHistory.slice(0,5).map((item,index)=><p className="specialty" key={`${item.createdAt}-${index}`}><b>{games.find(game=>game.id===item.gameId)?.name || item.gameId}</b><strong>{item.score.toLocaleString()} · +{item.xp} XP</strong></p>) : <p className="empty-retention">No verified runs yet.</p>}</div></div></section>}
     <nav className="mobile-nav"><button className={view==="operations" ? "active" : ""} onClick={()=>setView("operations")}>HOME</button><button className={view==="operations" ? "" : ""} onClick={()=>{setView("operations");setTimeout(()=>document.getElementById("ranked")?.scrollIntoView({behavior:"smooth"}),0)}}>GAMES</button><button className={view==="rankings" ? "active" : ""} onClick={()=>setView("rankings")}>RANK</button><button className={view==="profile" ? "active" : ""} onClick={()=>setView("profile")}>PROFILE</button></nav>
     <footer><span>OPERATOR</span><span>COMPETITIVE SKILL CHALLENGES, POWERED BY NIMIQ</span><span>NO PRIVATE KEYS ARE EVER EXPOSED</span></footer>
+    {briefing && <GameBriefing game={games.find(game=>game.id===briefing.id)!} mode={briefing.mode} briefing={gameBriefings[briefing.id]} rating={profile?.rating} onClose={()=>setBriefing(null)} onStart={()=>{const selected=briefing;setBriefing(null);void beginGame(selected.id,selected.mode)}}/>}
     {authPrompt && <div className="auth-backdrop" role="presentation" onClick={()=>setAuthPrompt(false)}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" onClick={event=>event.stopPropagation()}><button className="auth-close" aria-label="Close sign-in prompt" onClick={()=>setAuthPrompt(false)}>X</button><small>RANKED ACCESS</small><h2 id="auth-title">Sign in to play Ranked</h2><p>Practice games are always available. Connect your Nimiq wallet to submit this result to the verified leaderboard.</p><button className="gold-btn" onClick={()=>{setAuthPrompt(false); void connect();}}>CONNECT WALLET -&gt;</button></div></div>}
     {usernamePrompt && wallet && <div className="auth-backdrop" role="presentation"><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="username-title"><button className="auth-close" aria-label="Close username setup" onClick={()=>setUsernamePrompt(false)}>LATER</button><small>LEADERBOARD IDENTITY</small><h2 id="username-title">Choose your username</h2><p>This is the name other players will see on the leaderboard.</p><input className="username-input" value={usernameInput} onChange={event=>{setUsernameInput(event.target.value);setUsernameError(null)}} placeholder="Enter username" maxLength={20} autoFocus/><small>3-20 letters, numbers, _ or -</small>{usernameError && <div className="username-error">{usernameError}</div>}<button className="gold-btn username-submit" disabled={usernameSaving} onClick={()=>void saveUsername()}>{usernameSaving ? "SAVING..." : "CONTINUE -&gt;"}</button></div></div>}
   </main>
@@ -364,6 +381,12 @@ function App() {
 
 function UsernameSetupModal({input,error,saving,onInput,onClose,onSave}:{input:string;error:string|null;saving:boolean;onInput:(value:string)=>void;onClose:()=>void;onSave:()=>void}) {
   return <div className="auth-backdrop" role="presentation"><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="username-title"><button className="auth-close" aria-label="Close username setup" onClick={onClose}>LATER</button><small>LEADERBOARD IDENTITY</small><h2 id="username-title">Choose your username</h2><p>This is the name other players will see on the leaderboard.</p><input className="username-input" value={input} onChange={event=>onInput(event.target.value)} placeholder="Enter username" maxLength={20} autoFocus/><small>3-20 letters, numbers, _ or -</small>{error && <div className="username-error">{error}</div>}<button className="gold-btn username-submit" disabled={saving} onClick={onSave}>{saving ? "SAVING..." : "CONTINUE -&gt;"}</button></div></div>;
+}
+
+function GameBriefing({game,mode,briefing,rating,onClose,onStart}:{game:(typeof games)[number];mode:"ranked"|"daily"|"practice";briefing:{objective:string;controls:string;tip:string};rating?:number;onClose:()=>void;onStart:()=>void}) {
+  const tier = mode === "practice" ? "TRAINING" : mode === "daily" ? "DAILY STANDARD" : rating && rating >= 2400 ? "ELITE" : rating && rating >= 1900 ? "ADVANCED" : rating && rating >= 1500 ? "STANDARD" : "OPERATOR";
+  const Icon = game.icon;
+  return <div className="auth-backdrop briefing-backdrop" role="presentation"><section className="briefing-modal" role="dialog" aria-modal="true" aria-labelledby="briefing-title"><button className="auth-close" aria-label="Close game briefing" onClick={onClose}>LATER</button><div className="briefing-icon"><Icon size={28}/></div><small>MISSION BRIEFING · {tier}</small><h2 id="briefing-title">{game.name.toUpperCase()}</h2><p className="briefing-subtitle">{game.subtitle}</p><div className="briefing-steps"><div><span>01</span><p><b>OBJECTIVE</b>{briefing.objective}</p></div><div><span>02</span><p><b>CONTROLS</b>{briefing.controls}</p></div><div><span>03</span><p><b>OPERATOR TIP</b>{briefing.tip}</p></div></div><p className="briefing-proof">{mode === "practice" ? "Training is local-only and never changes your rank." : "This run is server-seeded and replay-verified. Your score is calculated after you finish."}</p><button className="gold-btn briefing-start" onClick={onStart}>{mode === "practice" ? "START TRAINING" : "START VERIFIED RUN"} <b>-&gt;</b></button></section></div>;
 }
 
 function ChallengePage({challengeId,wallet,onConnect,onStart}:{challengeId:string;wallet:string|null;onConnect:()=>void;onStart:(challengeId:string)=>Promise<void>}) {

@@ -134,6 +134,13 @@ function displayGrade(rating: number) {
   return `${grade} ${roman}`;
 }
 
+function difficultyForRating(rating: number) {
+  if (rating >= 2400) return { tier: 4, label: "ELITE", description: "Maximum complexity. Precision and recall are both tested." };
+  if (rating >= 1900) return { tier: 3, label: "ADVANCED", description: "Longer patterns and tighter execution." };
+  if (rating >= 1500) return { tier: 2, label: "STANDARD", description: "The full competitive ruleset." };
+  return { tier: 1, label: "OPERATOR", description: "A welcoming verified challenge to learn the system." };
+}
+
 function levelFor(xp: number) {
   const perLevel = 500;
   return { xp, level: Math.floor(xp / perLevel) + 1, xpIntoLevel: xp % perLevel, xpForLevel: perLevel, nextLevelXp: perLevel - (xp % perLevel) };
@@ -444,9 +451,11 @@ app.post("/runs", async c => {
     if (existing.rows.length) return c.json({ error: "daily attempt already used" }, 409);
   }
   const id = randomBytes(16).toString("hex"); const started = now(); const expires = started + gameLimits[body.gameId] + 15_000;
-  const seed = body.mode === "daily" ? seedFor(day, body.gameId) : randomBytes(16).toString("hex");
+  const difficulty = body.mode === "daily" ? { tier: 2, label: "DAILY", description: "A shared standard challenge for every operator today." } : difficultyForRating((await ratingFor(address)).rating);
+  const rawSeed = body.mode === "daily" ? seedFor(day, body.gameId) : randomBytes(16).toString("hex");
+  const seed = `t${difficulty.tier}:${rawSeed}`;
   await db.query("INSERT INTO runs VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)", [id, address, body.gameId, body.mode, body.mode === "daily" ? day : null, seed, iso(started), iso(expires)]);
-  return c.json({ runId: id, seed, gameId: body.gameId, mode: body.mode, expiresAt: iso(expires) });
+  return c.json({ runId: id, seed, gameId: body.gameId, mode: body.mode, expiresAt: iso(expires), difficulty });
 });
 
 app.post("/runs/start", async c => {

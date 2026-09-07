@@ -22,11 +22,11 @@ test("replay accepts a valid sequence and computes its own score", () => {
   assert.equal(result.score, 2900);
 });
 
-test("replay rejects wrong and superhuman runs", () => {
+test("replay saves verified partial progress but rejects superhuman runs", () => {
   const puzzle = createPuzzle("nim-pin", "abc");
   if (puzzle.gameId !== "nim-pin") return;
   const wrong = replay("nim-pin", "abc", [{ t: 100, type: "key", value: "0000" }]);
-  assert.equal(wrong.valid, false);
+  assert.deepEqual(wrong, { score: 0, xp: 0, valid: true, completed: false });
   const fast = replay("nim-pin", "abc", [{ t: 10, type: "key", value: puzzle.pin }]);
   assert.equal(fast.valid, false);
 });
@@ -48,23 +48,26 @@ test("replay validates ranked block rush and sync events", () => {
     { t: 100, type: "choice", value: "3" },
     { t: 200, type: "choice", value: "4" },
   ]);
-  assert.deepEqual(blocks, { score: 250, xp: 299, valid: true });
+  assert.deepEqual(blocks, { score: 250, xp: 299, valid: true, completed: true });
   const sync = replay("sync", "sync-seed", Array.from({ length: 5 }, (_, index) => ({
     t: (index + 1) * 100,
     type: "choice" as const,
     value: "hit",
   })));
-  assert.deepEqual(sync, { score: 500, xp: 298, valid: true });
+  assert.deepEqual(sync, { score: 500, xp: 298, valid: true, completed: true });
 });
 
-test("replay rejects malformed and incomplete ranked events", () => {
+test("replay rejects malformed events and saves incomplete verified events", () => {
   assert.equal(replay("block-rush", "seed", [{ t: 100, type: "choice", value: "2" }]).valid, false);
   assert.equal(replay("block-rush", "seed", [{ t: 100, type: "key", value: "3" }]).valid, false);
-  assert.equal(replay("sync", "seed", Array.from({ length: 4 }, (_, index) => ({
+  const partialSync = replay("sync", "seed", Array.from({ length: 4 }, (_, index) => ({
     t: (index + 1) * 100,
     type: "choice" as const,
     value: "hit",
-  }))).valid, false);
+  })));
+  assert.equal(partialSync.valid, true);
+  assert.equal(partialSync.completed, false);
+  assert.equal(partialSync.score, 400);
   assert.equal(replay("nim-pin", "seed", [
     { t: 200, type: "key", value: "0000" },
     { t: 100, type: "key", value: "0000" },

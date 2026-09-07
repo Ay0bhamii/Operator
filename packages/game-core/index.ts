@@ -7,7 +7,7 @@ export type Puzzle =
   | { gameId: "sequence"; sequence: string[] }
   | { gameId: "memory"; tokens: string[] }
   | { gameId: "nim-lock" | "vault"; targetAngles: number[] };
-export type ReplayResult = { score: number; xp: number; valid: boolean; reason?: string };
+export type ReplayResult = { score: number; xp: number; valid: boolean; completed?: boolean; reason?: string };
 
 const sequenceChars = "QWERASD";
 const memoryTokens = ["NQ", "7F", "3A", "C2", "91", "D8"];
@@ -34,7 +34,7 @@ export function difficultyTier(seed: string) {
 }
 
 function requireEvents(events: GameEvent[]) {
-  if (!Array.isArray(events) || events.length === 0) return "no events";
+  if (!Array.isArray(events)) return "invalid events";
   let previous = -1;
   for (const event of events) {
     if (!Number.isFinite(event.t) || event.t < 0 || event.t < previous) return "invalid event timing";
@@ -65,6 +65,11 @@ function speedXp(baseXp: number, duration: number, limit: number) {
   return baseXp + Math.round(baseXp * remainingRatio);
 }
 
+function progressReward(baseXp: number, progress: number, duration: number, limit: number) {
+  if (progress <= 0) return 0;
+  return Math.max(1, Math.round(speedXp(baseXp, duration, limit) * Math.min(1, progress)));
+}
+
 export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]): ReplayResult {
   const timingError = requireEvents(events);
   if (timingError) return { score: 0, xp: 0, valid: false, reason: timingError };
@@ -73,13 +78,14 @@ export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]):
     const groups = events.map(event => Number(event.value));
     if (groups.some(group => group < 3 || group > 88)) return { score: 0, xp: 0, valid: false, reason: "invalid block group" };
     const score = groups.reduce((total, group) => total + group * group * 10, 0);
-    return { score, xp: speedXp(150, events[events.length - 1].t, 30_000), valid: true };
+    const duration = events[events.length - 1]?.t ?? 30_000;
+    return { score, xp: score ? speedXp(150, duration, 30_000) : 0, valid: true, completed: true };
   }
   if (gameId === "sync") {
     if (events.some(event => event.type !== "choice" || !/^(hit|miss)$/.test(event.value))) return { score: 0, xp: 0, valid: false, reason: "invalid sync event" };
     const hits = events.filter(event => event.value === "hit").length;
-    if (hits < 5) return { score: 0, xp: 0, valid: false, reason: "sync challenge incomplete" };
-    return { score: hits * 100, xp: speedXp(150, events[events.length - 1].t, 30_000), valid: true };
+    const duration = events[events.length - 1]?.t ?? 30_000;
+    return { score: hits * 100, xp: progressReward(150, hits / 5, duration, 30_000), valid: true, completed: hits >= 5 };
   }
   const puzzle = createPuzzle(gameId, seed);
   const minimumGap = gameId === "sequence" ? 70 : gameId === "nim-lock" || gameId === "vault" ? 100 : 80;
@@ -95,22 +101,27 @@ export function replay(gameId: RankedGameId, seed: string, events: GameEvent[]):
       if (ring < 0 || ring >= clicks.length) return { score: 0, xp: 0, valid: false, reason: "invalid ring" };
       clicks[ring] += 1;
     }
-    const valid = clicks.every((count, index) => Math.abs(((count * 45 - puzzle.targetAngles[index] + 540) % 360) - 180) < 12);
-    if (!valid) return { score: 0, xp: 0, valid: false, reason: "wrong solution" };
-    const duration = events[events.length - 1].t;
+    const aligned = clicks.filter((count, index) => Math.abs(((count * 45 - puzzle.targetAngles[index] + 540) % 360) - 180) < 12).length;
+    const duration = events[events.length - 1]?.t ?? (puzzle.gameId === "vault" ? 10_000 : 20_000);
     const limit = puzzle.gameId === "vault" ? 10000 : 20000;
     const baseXp = puzzle.gameId === "vault" ? 220 : 180;
-    return { score: Math.max(100, Math.round((limit - duration) / 5) + clicks.length * 100), xp: speedXp(baseXp, duration, limit), valid: true };
+    const completed = aligned === clicks.length;
+    const fullScore = Math.max(100, Math.round((limit - duration) / 5) + clicks.length * 100);
+    return { score: completed ? fullScore : Math.round(fullScore * aligned / clicks.length), xp: progressReward(baseXp, aligned / clicks.length, duration, limit), valid: true, completed };
   }
-  const target = puzzle.gameId === "nim-pin" ? [puzzle.pin] : puzzle.gameId === "sequence" ? puzzle.sequence : puzzle.gameId === "memory" ? puzzle.tokens : [];
-  const valid = values.length === target.length && values.every((value, index) => value === target[index]);
-  if (!valid) return { score: 0, xp: 0, valid: false, reason: "wrong solution" };
-  const duration = events[events.length - 1].t;
-  if (duration < target.length * minimumGap) return { score: 0, xp: 0, valid: false, reason: "duration below minimum" };
-  const limit = gameId === "nim-pin" ? 12000 : gameId === "sequence" ? 7000 : 2500;
-  const score = Math.max(100, Math.round((limit - duration) / (gameId === "sequence" ? 2 : 4)));
+  const target = puzzle.gameId === "nim-pin" ? puzzle.pin.split("") : puzzle.gameId === "sequence" ? puzzle.sequence : puzzle.gameId === "memory" ? puzzle.tokens : [];
+  const suppliedValues = puzzle.gameId === "nim-pin" && values.length === 1 && values[0].length === target.length ? values[0].split("") : values;
+  if (suppliedValues.length > target.length) return { score: 0, xp: 0, valid: false, reason: "too many inputs" };
+  const firstWrong = suppliedValues.findIndex((value, index) => value !== target[index]);
+  const normalizedValues = firstWrong < 0 ? suppliedValues : suppliedValues.slice(0, firstWrong);
+  const correct = normalizedValues.length;
+  const duration = events[events.length - 1]?.t ?? 0;
+  const limit = gameId === "nim-pin" ? 12000 : gameId === "sequence" ? 7000 : 12000;
+  if (correct && duration < correct * minimumGap) return { score: 0, xp: 0, valid: false, reason: "duration below minimum" };
+  const fullScore = Math.max(100, Math.round((limit - duration) / (gameId === "sequence" ? 2 : 4)));
   const baseXp = gameId === "sequence" ? 180 : gameId === "nim-pin" ? 125 : 160;
-  return { score, xp: speedXp(baseXp, duration, limit), valid: true };
+  const completed = correct === target.length;
+  return { score: completed ? fullScore : Math.round(fullScore * correct / target.length), xp: progressReward(baseXp, correct / target.length, duration, limit), valid: true, completed };
 }
 
 export function dailyGame(day: string): RankedGameId {

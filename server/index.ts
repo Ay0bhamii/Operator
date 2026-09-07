@@ -40,7 +40,7 @@ const sessionSecret = process.env.SESSION_SECRET || "development-only-change-me"
 const dailySecret = process.env.DAILY_SECRET || "development-daily-secret";
 const rankedGames = new Set<RankedGameId>(["block-rush", "nim-pin", "memory", "vault", "sync"]);
 const challengeGames = new Set<RankedGameId>(["nim-pin", "memory", "vault"]);
-const gameLimits: Record<string, number> = { "block-rush": 30000, "nim-pin": 12000, memory: 2500, vault: 10000, sync: 30000 };
+const gameLimits: Record<string, number> = { "block-rush": 30000, "nim-pin": 12000, memory: 12000, vault: 10000, sync: 30000 };
 const achievementDefinitions = [
   ["first-blood", "FIRST BLOOD", "Complete your first verified ranked run.", "COMMON", 25],
   ["no-signal", "NO SIGNAL", "Score 1,000 or more in one game.", "COMMON", 25],
@@ -450,7 +450,7 @@ app.post("/runs", async c => {
     const existing = await db.query("SELECT 1 FROM scores WHERE address = $1 AND game_id = $2 AND day = $3 AND mode = 'daily'", [address, body.gameId, day]);
     if (existing.rows.length) return c.json({ error: "daily attempt already used" }, 409);
   }
-  const id = randomBytes(16).toString("hex"); const started = now(); const expires = started + gameLimits[body.gameId] + 15_000;
+  const id = randomBytes(16).toString("hex"); const started = now(); const expires = started + gameLimits[body.gameId] + 120_000;
   const difficulty = body.mode === "daily" ? { tier: 2, label: "DAILY", description: "A shared standard challenge for every operator today." } : difficultyForRating((await ratingFor(address)).rating);
   const rawSeed = body.mode === "daily" ? seedFor(day, body.gameId) : randomBytes(16).toString("hex");
   const seed = `t${difficulty.tier}:${rawSeed}`;
@@ -483,7 +483,7 @@ app.post("/runs/:id/submit", async c => {
 
   const events = body.events || []; const duration = events.length ? events[events.length - 1].t : 0;
   const serverDuration = now() - Date.parse(run.started_at);
-  if (serverDuration < 100 || serverDuration > gameLimits[run.game_id as RankedGameId] + 15_000) return c.json({ error: "invalid server duration" }, 400);
+  if (serverDuration < 100 || serverDuration > gameLimits[run.game_id as RankedGameId] + 120_000) return c.json({ error: "invalid server duration" }, 400);
   if (duration > gameLimits[run.game_id as RankedGameId]) return c.json({ error: "run duration exceeded" }, 400);
   const result = replay(run.game_id, run.seed, events);
   if (!result.valid) return c.json({ error: result.reason || "invalid replay" }, 400);
@@ -522,7 +522,7 @@ app.post("/runs/:id/submit", async c => {
   const nextTarget = await nextTargetFor(board.map(row => ({ address: row.address, username: row.username, score: row.score })), address, best);
   const streak = await streakFor(address);
 
-  return c.json({ score: result.score, xp: result.xp, rank, previousRank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, displayGrade: displayGrade(ratingAfter.rating), ratingDelta: ratingAfter.rating - ratingBefore.rating, streak, nextTarget, ...ratingProgress(ratingAfter.rating) });
+  return c.json({ score: result.score, xp: result.xp, completed: result.completed ?? true, rank, previousRank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, displayGrade: displayGrade(ratingAfter.rating), ratingDelta: ratingAfter.rating - ratingBefore.rating, streak, nextTarget, ...ratingProgress(ratingAfter.rating) });
 });
 
 app.get("/leaderboard", async c => {

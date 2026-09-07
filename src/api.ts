@@ -52,7 +52,7 @@ export type RankedPeriod = "all" | "daily" | "weekly" | "season";
 export async function submitRun(runId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/runs/${runId}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Run was rejected");
-  return await response.json() as { score: number; xp: number; rank: number | null; previousRank?: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; displayGrade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean; streak?: number; nextTarget?: NextTarget | null };
+  return await response.json() as { score: number; xp: number; completed?: boolean; rank: number | null; previousRank?: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; displayGrade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean; streak?: number; nextTarget?: NextTarget | null };
 }
 
 export async function getLeaderboard(gameId: string = "all", period: RankedPeriod = "all") {

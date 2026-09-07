@@ -259,7 +259,7 @@ function BlockRush({ranked,rankedSubmission,onEvent,onFinish}:{ranked:boolean;ra
   const colors = ["cyan","lime","violet"];
   const [board,setBoard]=useState(()=>Array.from({length:88},()=>colors[rand(3)]));
   const initialTime=30; const [score,setScore]=useState(0); const [time,setTime]=useState(initialTime); const [done,setDone]=useState(false);
-  useEffect(()=>{ if(done)return; const t=setInterval(()=>setTime(x=>{if(x<=1){clearInterval(t);setDone(true);return 0}return x-1}),1000); return()=>clearInterval(t)},[done]);
+  useEffect(()=>{ if(done)return; const t=setInterval(()=>setTime(x=>{if(x<=1){clearInterval(t);setDone(true);onFinish({score,xp:150,time:30});return 0}return x-1}),1000); return()=>clearInterval(t)},[done,onFinish]);
   function click(i:number){
     if(done)return; const col=board[i]; const seen=new Set<number>(), q=[i];
     while(q.length){const x=q.pop()!; if(seen.has(x)||board[x]!==col)continue; seen.add(x); const r=Math.floor(x/11),c=x%11; [x-11,x+11,x-1,x+1].forEach(n=>{if(n>=0&&n<88&&Math.floor(n/11)>=r-1&&Math.floor(n/11)<=r+1&&Math.abs((n%11)-c)<=1)q.push(n)})}

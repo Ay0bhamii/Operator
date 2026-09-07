@@ -2,7 +2,7 @@
 
 **Competitive skill challenges, powered by Nimiq.**
 
-OPERATOR is a competitive skill platform where players enter short, high-pressure challenges, prove their ability, and climb verified rankings. It combines a premium command-center interface with Nimiq wallet identity and server-side replay validation.
+OPERATOR is a competitive skill platform where scores are not trusted—they are cryptographically authenticated and server-verified. Nimiq provides the player identity and Web3 reward layer around a fast, off-chain competitive game engine.
 
 ## What it is
 
@@ -10,9 +10,11 @@ OPERATOR is a browser and Nimiq Pay skill platform. Each challenge is a fast tes
 
 The product promise is simple: **don�t just play. Prove it.**
 
-## Why Nimiq
+## Why Nimiq is essential
 
-Nimiq provides a natural operator identity without passwords, seed phrases, or private keys entering the app. Hub and Nimiq Pay can sign one login nonce, allowing the API to verify who played while keeping score calculation on the server.
+Nimiq is not a decorative wallet button. It gives every ranked operator a portable, cryptographically proven identity without passwords, seed phrases, or private keys entering the app. Hub and Nimiq Pay sign the login nonce; the server verifies the signing address, binds the run to that operator, and uses the same identity for leaderboard ownership, achievements, challenge results, and qualified daily NIM reward claims.
+
+Gameplay stays off-chain deliberately: input events are replayed on the server for instant results and low cost. Only qualified rewards are prepared for a payout worker and must be recorded with a Nimiq transaction hash before they are shown as settled.
 
 ## How it works
 
@@ -27,6 +29,16 @@ Connect Nimiq wallet
 ```
 
 The client never submits an authoritative score. It submits events from a server-issued run.
+
+## Judge demo: prove the anti-cheat model
+
+Use this 30-second sequence:
+
+1. **CONNECT** — sign one Nimiq nonce and show the authenticated operator identity.
+2. **PLAY** — start a ranked Daily Operation; the server issues the run ID and deterministic seed.
+3. **VERIFIED** — finish the game and show `SUBMITTING REPLAY` followed by `VERIFIED RESULT`.
+4. **RANK UP** — open Rankings/Profile to show server-calculated score, rating, XP, streak, and placement.
+5. **REJECT** — replay the same run, alter event timing/order, or try to submit a made-up score. The API accepts no score field, consumes each run once, recomputes the result from events, and rejects invalid or reused submissions.
 
 ## 5 verified competitive games
 
@@ -80,6 +92,10 @@ Connected operators can create a challenge token for a ranked game. A friend joi
 - One daily score per address, game, and UTC day.
 - Guest practice is local-only.
 - No seed phrase or private key is requested or exposed.
+- Endpoint-specific rate limiting with standard retry headers.
+- Production requires Postgres; SQLite is a local-development fallback only.
+- Leaderboard, history, run-expiry, session-expiry, challenge, and analytics indexes support the live query paths.
+- API failures are emitted as structured server logs without returning internal details to players.
 
 ## Local development
 

@@ -8,6 +8,10 @@ import { Hash, PublicKey, Signature } from "@nimiq/core";
 import { createPuzzle, dailyGame, replay, type GameEvent, type RankedGameId } from "../packages/game-core/index.js";
 
 const app = new Hono();
+const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+if (isProduction && !process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required in production; SQLite is only supported for local development.");
+}
 const pgDb = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("localhost") ? false : { rejectUnauthorized: false },
@@ -66,6 +70,13 @@ CREATE TABLE IF NOT EXISTS friend_challenges (id TEXT PRIMARY KEY, token TEXT UN
 CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, rarity TEXT NOT NULL, xp INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS player_achievements (address TEXT NOT NULL, achievement_id TEXT NOT NULL, unlocked_at TIMESTAMPTZ NOT NULL, xp INTEGER NOT NULL, PRIMARY KEY (address, achievement_id));
 CREATE UNIQUE INDEX IF NOT EXISTS scores_daily_unique ON scores(address, game_id, day) WHERE mode = 'daily';
+CREATE INDEX IF NOT EXISTS scores_leaderboard_idx ON scores(game_id, mode, score DESC, created_at ASC);
+CREATE INDEX IF NOT EXISTS scores_player_history_idx ON scores(address, mode, created_at DESC);
+CREATE INDEX IF NOT EXISTS scores_daily_board_idx ON scores(game_id, day, score DESC, created_at ASC);
+CREATE INDEX IF NOT EXISTS runs_address_expiry_idx ON runs(address, expires_at);
+CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS challenges_players_idx ON friend_challenges(creator_address, opponent_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC);
 `);
 
 try { await db.query("ALTER TABLE addresses ADD COLUMN username TEXT"); } catch {}
@@ -80,6 +91,17 @@ const text = (value: string) => new TextEncoder().encode(value);
 const cookie = (name: string, value: string, maxAge: number) => `${name}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${process.env.COOKIE_SAME_SITE || "Lax"}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
 const signSession = (id: string) => createHmac("sha256", sessionSecret).update(id).digest("hex");
 const seedFor = (day: string, gameId: string) => createHmac("sha256", dailySecret).update(`${day}:${gameId}`).digest("hex").slice(0, 32);
+
+type RateBucket = { count: number; resetAt: number };
+const rateBuckets = new Map<string, RateBucket>();
+const ratePolicy = (path: string) => path.startsWith("/auth/") ? { limit: 15, windowMs: 10 * 60_000 } : path.includes("/submit") ? { limit: 30, windowMs: 60_000 } : path === "/runs" || path === "/runs/start" || path === "/challenges" ? { limit: 30, windowMs: 60_000 } : { limit: 180, windowMs: 60_000 };
+
+function clientKey(c: any) {
+  return c.req.header("x-vercel-forwarded-for")?.split(",")[0]?.trim()
+    || c.req.header("x-real-ip")
+    || c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    || "unknown";
+}
 
 function gradeFor(rating: number) {
   return rating >= 2400 ? "DIAMOND" : rating >= 1900 ? "PLATINUM" : rating >= 1500 ? "GOLD" : rating >= 1200 ? "SILVER" : "BRONZE";
@@ -245,6 +267,29 @@ async function sessionAddress(c: any): Promise<string | null> {
 }
 
 app.use("/*", cors({ origin: process.env.WEB_ORIGIN || "http://localhost:5173", credentials: true }));
+app.use("/*", async (c, next) => {
+  const policy = ratePolicy(new URL(c.req.url).pathname);
+  const timestamp = now();
+  const key = `${clientKey(c)}:${policy.limit}:${policy.windowMs}`;
+  const bucket = rateBuckets.get(key);
+  const active = !bucket || bucket.resetAt <= timestamp ? { count: 0, resetAt: timestamp + policy.windowMs } : bucket;
+  active.count += 1;
+  rateBuckets.set(key, active);
+  if (rateBuckets.size > 10_000) {
+    for (const [bucketKey, entry] of rateBuckets) if (entry.resetAt <= timestamp) rateBuckets.delete(bucketKey);
+  }
+  c.header("X-RateLimit-Limit", String(policy.limit));
+  c.header("X-RateLimit-Remaining", String(Math.max(0, policy.limit - active.count)));
+  if (active.count > policy.limit) {
+    c.header("Retry-After", String(Math.ceil((active.resetAt - timestamp) / 1000)));
+    return c.json({ error: "rate limit exceeded; retry shortly" }, 429);
+  }
+  await next();
+});
+app.onError((error, c) => {
+  console.error(JSON.stringify({ event: "operator_api_error", path: new URL(c.req.url).pathname, message: error instanceof Error ? error.message : "unknown error" }));
+  return c.json({ error: "internal server error" }, 500);
+});
 app.get("/health", c => c.json({ ok: true }));
 
 app.post("/analytics/event", async c => {

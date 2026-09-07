@@ -8,10 +8,15 @@
 - Replay timing, event order, event values, and puzzle solutions are validated server-side.
 - Practice scores remain local and are not accepted by ranked endpoints.
 - Reward requests require a verified daily score and are unique per wallet/day.
+- Scores are calculated from server-replayed events. Ranked submission bodies do not contain an authoritative score field.
+- Each run is consumed before replay evaluation, preventing a valid event trace from being replayed after submission.
+- Per-IP request limiting protects authentication, run creation, and replay submission endpoints. Responses include `Retry-After` when limited.
+- Unhandled API failures are logged as structured events and return a generic error response.
 
 Production requirements:
 
 - Set a strong `SESSION_SECRET` and `DAILY_SECRET`.
 - Configure durable Postgres with `DATABASE_URL`.
+- Production startup rejects SQLite fallback when `DATABASE_URL` is missing.
 - Set `WEB_ORIGIN` to the deployed frontend origin.
 - Configure a funded payout worker before enabling on-chain reward settlement.

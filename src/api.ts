@@ -81,20 +81,40 @@ export async function trackEvent(event: "wallet_connected" | "run_started" | "ru
   }).catch(() => {});
 }
 
+export type Challenge = {
+  challengeId: string;
+  token: string;
+  gameId: string;
+  seed?: string;
+  creatorUsername: string;
+  opponentUsername: string | null;
+  creatorScore: number | null;
+  opponentScore: number | null;
+  winnerUsername: string | null;
+  status: "WAITING" | "IN_PROGRESS" | "COMPLETED" | "EXPIRED";
+  expiresAt: string;
+};
+
 export async function createChallenge(gameId: string) {
   const response = await fetch(`${API_URL}/challenges`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId }) });
   if (!response.ok) throw new Error((await response.json()).error || "Could not create challenge");
-  return await response.json() as { token: string; gameId: string; seed: string; expiresAt: string };
+  return await response.json() as Challenge & { seed: string };
 }
 
-export async function joinChallenge(token: string) {
-  const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(token)}/join`, { method: "POST", credentials: "include" });
+export async function getChallenge(challengeId: string) {
+  const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}`, { credentials: "include" });
+  if (!response.ok) throw new Error((await response.json()).error || "Could not load challenge");
+  return await response.json() as Challenge;
+}
+
+export async function joinChallenge(challengeId: string) {
+  const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}/join`, { method: "POST", credentials: "include" });
   if (!response.ok) throw new Error((await response.json()).error || "Could not join challenge");
-  return await response.json() as { token: string; gameId: string; seed: string };
+  return await response.json() as Challenge & { seed: string };
 }
 
-export async function submitChallenge(token: string, events: unknown[]) {
-  const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(token)}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
+export async function submitChallenge(challengeId: string, events: unknown[]) {
+  const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Challenge run was rejected");
-  return await response.json() as { score: number; xp: number; opponentScore: number | null };
+  return await response.json() as { score: number; xp: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
 }

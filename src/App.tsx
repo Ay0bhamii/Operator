@@ -7,6 +7,7 @@ import {
 import { connectNimiq, isNimiqPay } from "./nimiq";
 import {
   createChallenge,
+  getChallenge,
   getDaily,
   getDailyStatus,
   getLeaderboard,
@@ -21,6 +22,7 @@ import {
   updateUsername,
   type DailyOperation,
   type DailyStatus,
+  type Challenge,
   type Run
 } from "./api";
 import { formatCountdown, getGlobalRankText } from "./ui-format";
@@ -32,7 +34,7 @@ type GameId =
   | "memory" | "nim-lock" | "vault" | "sync";
 
 type Result = { score: number; xp: number; time?: number };
-type RankedSubmission = { state: "idle" | "submitting" | "verified" | "rejected"; score?: number; xp?: number; error?: string };
+type RankedSubmission = { state: "idle" | "submitting" | "verified" | "rejected"; score?: number; xp?: number; error?: string; playerUsername?: string; opponentUsername?: string | null; opponentScore?: number | null; winnerUsername?: string | null };
 
 const games: { id: GameId; name: string; subtitle: string; icon: any; difficulty: string }[] = [
   { id: "block-rush", name: "Block Rush", subtitle: "Clear connected network blocks", icon: Grid3X3, difficulty: "Easy" },
@@ -49,12 +51,15 @@ const rand = (n: number) => Math.floor(Math.random() * n);
 const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5);
 
 function App() {
+  const challengePath = window.location.pathname.match(/^\/challenge\/([^/]+)\/?$/);
   const [game,setGame]=useState<GameId|null>(null);
   const [wallet,setWallet]=useState<string|null>(null);
   const [activeRun,setActiveRun]=useState<Run|null>(null);
   const [challengeCopied,setChallengeCopied]=useState(false);
   const [challengeGame,setChallengeGame]=useState<GameId>("nim-pin");
   const [challengeToken,setChallengeToken]=useState("");
+  const [challenge,setChallenge]=useState<Challenge|null>(null);
+  const [challengeLink,setChallengeLink]=useState("");
   const [challengeMessage,setChallengeMessage]=useState<string|null>(null);
   const [rewardError,setRewardError]=useState<string|null>(null);
   const [dailyStatus,setDailyStatus]=useState<DailyStatus|null>(null);
@@ -88,6 +93,7 @@ function App() {
   const [authPrompt,setAuthPrompt]=useState(false);
   const [pendingRankedGame,setPendingRankedGame]=useState<GameId|null>(null);
   const [pendingRankedMode,setPendingRankedMode]=useState<"ranked"|"daily">("ranked");
+  const [pendingChallengeId,setPendingChallengeId]=useState<string|null>(null);
   const [usernamePrompt,setUsernamePrompt]=useState(false);
   const [usernameInput,setUsernameInput]=useState("");
   const [usernameError,setUsernameError]=useState<string|null>(null);
@@ -101,7 +107,7 @@ function App() {
   }
 
   async function copyChallenge() {
-    const shareText = "NIM PIN - Same puzzle. Same seed. One winner.\nhttps://operator.nimiq.example/challenge";
+    const shareText = challengeLink || "Create a challenge first";
     try {
       await navigator.clipboard.writeText(shareText);
       setChallengeCopied(true);
@@ -164,14 +170,14 @@ function App() {
   async function createFriendChallenge(){
     setChallengeMessage(null);
     if(!wallet){ setChallengeMessage("Connect your wallet to create a challenge"); return; }
+    if(!profile?.username){ setUsernamePrompt(true); setChallengeMessage("Choose a username before creating a challenge"); return; }
     try {
       const challenge = await createChallenge(challengeGame);
+      const link = `${window.location.origin}/challenge/${challenge.challengeId}`;
+      setChallenge(challenge);
       setChallengeToken(challenge.token);
-      setChallengeMessage(`Share token ${challenge.token} with your friend`);
-      setActiveRun({ runId: "", seed: challenge.seed, gameId: challenge.gameId, mode: "ranked", expiresAt: challenge.expiresAt, challengeToken: challenge.token });
-      eventsRef.current=[];
-      runStartedAt.current=performance.now();
-      setGame(challenge.gameId as GameId);
+      setChallengeLink(link);
+      setChallengeMessage("Challenge created. Share the link with your friend.");
     } catch(error) {
       setChallengeMessage(error instanceof Error ? error.message : "Could not create challenge");
     }
@@ -182,6 +188,7 @@ function App() {
     if(!wallet){ setChallengeMessage("Connect your wallet to join a challenge"); return; }
     try {
       const challenge = await joinChallenge(challengeToken.trim());
+      setChallenge(challenge);
       setActiveRun({ runId: "", seed: challenge.seed, gameId: challenge.gameId, mode: "ranked", expiresAt: "", challengeToken: challenge.token });
       eventsRef.current=[];
       runStartedAt.current=performance.now();
@@ -189,6 +196,20 @@ function App() {
     } catch(error) {
       setChallengeMessage(error instanceof Error ? error.message : "Could not join challenge");
     }
+  }
+
+  async function startChallenge(challengeId: string){
+    setChallengeMessage(null);
+    if(!wallet){setChallengeMessage("Connect your wallet to play this challenge");return;}
+    if(!profile?.username){setPendingChallengeId(challengeId);setUsernamePrompt(true);return;}
+    try{
+      const joined=await joinChallenge(challengeId);
+      setChallenge(joined);
+      setActiveRun({ runId: "", seed: joined.seed, gameId: joined.gameId, mode: "ranked", expiresAt: joined.expiresAt, challengeToken: joined.challengeId });
+      eventsRef.current=[];
+      runStartedAt.current=performance.now();
+      setGame(joined.gameId as GameId);
+    }catch(error){setChallengeMessage(error instanceof Error ? error.message : "Could not start challenge");}
   }
 
   const rankedGames = ["block-rush", "nim-pin", "memory", "vault", "sync"];
@@ -240,6 +261,9 @@ function App() {
       const mode=pendingRankedMode;
       setPendingRankedGame(null);
       if(id) void launchGame(id,mode);
+      const challengeId=pendingChallengeId;
+      setPendingChallengeId(null);
+      if(challengeId) void startChallenge(challengeId);
     }catch(error){
       setUsernameError(error instanceof Error ? error.message : "Could not save username");
     }finally{
@@ -252,8 +276,9 @@ function App() {
       setRankedSubmission({state:"submitting"});
       try {
         const result = activeRun.challengeToken ? await submitChallenge(activeRun.challengeToken, eventsRef.current) : await submitRun(activeRun.runId, eventsRef.current);
+        if(activeRun.challengeToken) getChallenge(activeRun.challengeToken).then(setChallenge).catch(()=>{});
         trackEvent("run_verified", id);
-        setRankedSubmission({state:"verified",score:result.score,xp:result.xp});
+        setRankedSubmission({state:"verified",score:result.score,xp:result.xp,playerUsername:profile?.username || "You",...(activeRun.challengeToken && "opponentScore" in result ? {opponentUsername:result.opponentUsername,opponentScore:result.opponentScore,winnerUsername:result.winnerUsername} : {})});
         setLeaderboardGame(id);
         setVerifiedBest("best" in result ? result.best : result.score);
         setScores(x=>({...x,[id]:Math.max(x[id]||0,"best" in result ? result.best : result.score)}));
@@ -276,6 +301,8 @@ function App() {
 
   if(game) return <GameShell title={games.find(g=>g.id===game)?.name||"Game"} onBack={()=>{setGame(null);setActiveRun(null)}}><Game id={game} run={activeRun} rankedSubmission={rankedSubmission} onEvent={event=>eventsRef.current.push({...event,t:Math.round(performance.now()-runStartedAt.current)})} onFinish={r=>finish(game,r)}/></GameShell>;
 
+  if(challengePath) return <><ChallengePage challengeId={decodeURIComponent(challengePath[1])} wallet={wallet} onConnect={connect} onStart={startChallenge}/>{usernamePrompt && wallet && <UsernameSetupModal input={usernameInput} error={usernameError} saving={usernameSaving} onInput={value=>{setUsernameInput(value);setUsernameError(null)}} onClose={()=>setUsernamePrompt(false)} onSave={()=>void saveUsername()}/>}</>;
+
   return <main className="site">
     <header className="nav"><button className="wordmark" onClick={()=>scrollTo(0,0)}><img className="brand-logo" src="/logo/operator-mark.svg" alt=""/><span className="wordmark-main">OPERATOR</span><span className="wordmark-sub">BY NIMIQ</span></button><nav className="nav-links"><a href="#practice">Practice</a><a href="#ranked">Ranked</a><a href="#leaderboard">Rankings</a><a href="#profile">Profile</a></nav>{wallet ? <button className="connect" onClick={signOut}><i/>SIGN OUT</button> : <button className="connect" onClick={connect}><i/>{isNimiqPay()?"Connect Nimiq Pay":"Connect NIM"}</button>}</header>
     <section className="wallet-status">{wallet ? <><span className="wallet-live">LIVE / VERIFIED SESSION</span><span>{wallet}</span></> : walletError ? <><span className="wallet-error">WALLET CONNECTION FAILED</span><span>{walletError}</span></> : <><span>WALLET</span><span>{isNimiqPay()?"Nimiq Pay detected - ready to verify":"Connect with Nimiq Hub to play ranked"}</span></>}</section>
@@ -285,12 +312,25 @@ function App() {
     <section id="ranked" className="lab-section"><div className="section-heading"><div><span>02</span><h2>RANKED GAMES</h2></div><p>{wallet ? "WALLET VERIFIED" : "SIGN IN TO COMPETE"}<br/>{wallet ? "RESULTS COUNT" : "RESULTS STAY LOCKED"}</p></div><div className="game-list">{games.filter(g=>rankedGames.includes(g.id)).map((g,i)=>{const Icon=g.icon;return <button className={`editorial-game ${wallet ? "" : "ranked-locked"}`} key={g.id} onClick={()=>{triggerFeedback("tap"); requestRankedGame(g.id)}}><span>0{i+1}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><small>{wallet ? "RANKED" : "SIGN IN TO PLAY"}</small><strong>-&gt;</strong></button>})}</div></section>
     <section id="practice" className="lab-section"><div className="section-heading"><div><span>03</span><h2>PRACTICE GAMES</h2></div><p>PLAY FREELY<br/>NO SIGN-IN REQUIRED</p></div><div className="game-list">{games.map((g,i)=>{const Icon=g.icon;return <button className="editorial-game" key={g.id} onClick={()=>{triggerFeedback("tap"); void launchGame(g.id,"practice")}}><span>0{String(i+1).padStart(2,"0")}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><small>PRACTICE</small><strong>-&gt;</strong></button>})}</div></section>
     <section id="leaderboard" className="leaderboard-section"><div className="section-heading"><div><span>03</span><h2>RANKINGS</h2></div><p>GLOBAL<br/>VERIFIED</p></div><div className="leaderboard-table"><div className="rank-highlight"><div className="rank-pill">{getGlobalRankText(globalRank, pointsAway)}</div><div className="rank-gap">{getGlobalRankText(globalRank, pointsAway, true)}</div><button className="challenge-player" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>CHALLENGE PLAYER</button></div>{leaderboard.length ? leaderboard.map((row,index)=><div className="rank-row" key={`${row.username}-${index}`}><span>{String(index+1).padStart(2,"0")}</span><span>{row.username}</span><b>{row.score.toLocaleString()}</b><i>-&gt;</i></div>) : <div className="leaderboard-empty"><b>{wallet ? "NO VERIFIED SCORES YET" : "CONNECT TO RANK"}</b><span>{wallet ? "Complete a ranked challenge to appear here." : "Guest scores stay on this device and never enter the board."}</span></div>}<div className="your-rank"><span>YOUR BEST</span><b>{wallet ? (verifiedBest || scores[leaderboardGame] || "-") : "GUEST"}</b><strong>{wallet ? "VERIFIED OPERATOR" : "VERIFICATION REQUIRED"}</strong></div></div></section>
-    <section className="friend-section"><div className="section-label">04 <span>CHALLENGE A FRIEND</span></div><div className="friend-card"><div className="friend-copy"><h3>Same puzzle.</h3><h3>Same seed.</h3><h3>One winner.</h3></div><button className="copy-btn" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>{challengeCopied ? "COPIED" : "COPY CHALLENGE"}</button></div></section>
+    <section className="friend-section"><div className="section-label">04 <span>CHALLENGE A FRIEND</span></div><div className="friend-card"><div className="friend-copy"><h3>Same puzzle.</h3><h3>Same seed.</h3><h3>One winner.</h3><p>{challengeMessage || (challenge ? challenge.status === "WAITING" ? "Waiting for opponent..." : `${challenge.opponentUsername || "Opponent"} joined. Beat their score.` : "Compete asynchronously with a friend.")}</p></div><div className="friend-actions">{!challenge && <button className="copy-btn" onClick={()=>void createFriendChallenge()}>CREATE CHALLENGE</button>}{challenge && <><small>CHALLENGE CREATED</small><input className="challenge-link" value={challengeLink} readOnly/><button className="copy-btn" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>{challengeCopied ? "CHALLENGE COPIED" : "COPY CHALLENGE"}</button></>}</div></div></section>
     <section id="profile" className="profile-section"><div className="profile-card"><div className="profile-head"><div><span>05</span><small>OPERATOR PROFILE</small></div><div>LVL <b>{level}</b></div></div><div className="profile-main"><div><small>OPERATOR RATING</small><div className="big-xp">{profile?.rating?.toLocaleString()||"-"}</div><div className="xp-line"><i style={{width:`${profile ? Math.min(100,profile.rating/30) : 0}%`}}/></div><small>{profile ? `${profile.grade} GRADE - ${profile.verifiedRuns} VERIFIED RUNS` : "CONNECT WALLET TO BUILD RATING"}</small></div><div className="profile-stats"><div><small>USERNAME</small><b>{profile?.username || "UNNAMED PLAYER"}</b>{wallet && <button className="profile-edit" onClick={()=>{setUsernameInput(profile?.username || "");setUsernameError(null);setUsernamePrompt(true)}}>EDIT</button>}</div><div><small>CURRENT XP</small><b>{xp.toLocaleString()}</b></div><div><small>STREAK</small><b>{profile?.streak ? `${profile.streak} DAYS` : "-"}</b></div></div></div></div></section>
     <footer><span>OPERATOR</span><span>COMPETITIVE SKILL CHALLENGES, POWERED BY NIMIQ</span><span>NO PRIVATE KEYS ARE EVER EXPOSED</span></footer>
     {authPrompt && <div className="auth-backdrop" role="presentation" onClick={()=>setAuthPrompt(false)}><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" onClick={event=>event.stopPropagation()}><button className="auth-close" aria-label="Close sign-in prompt" onClick={()=>setAuthPrompt(false)}>X</button><small>RANKED ACCESS</small><h2 id="auth-title">Sign in to play Ranked</h2><p>Practice games are always available. Connect your Nimiq wallet to submit this result to the verified leaderboard.</p><button className="gold-btn" onClick={()=>{setAuthPrompt(false); void connect();}}>CONNECT WALLET -&gt;</button></div></div>}
     {usernamePrompt && wallet && <div className="auth-backdrop" role="presentation"><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="username-title"><button className="auth-close" aria-label="Close username setup" onClick={()=>setUsernamePrompt(false)}>LATER</button><small>LEADERBOARD IDENTITY</small><h2 id="username-title">Choose your username</h2><p>This is the name other players will see on the leaderboard.</p><input className="username-input" value={usernameInput} onChange={event=>{setUsernameInput(event.target.value);setUsernameError(null)}} placeholder="Enter username" maxLength={20} autoFocus/><small>3-20 letters, numbers, _ or -</small>{usernameError && <div className="username-error">{usernameError}</div>}<button className="gold-btn username-submit" disabled={usernameSaving} onClick={()=>void saveUsername()}>{usernameSaving ? "SAVING..." : "CONTINUE -&gt;"}</button></div></div>}
   </main>
+}
+
+function UsernameSetupModal({input,error,saving,onInput,onClose,onSave}:{input:string;error:string|null;saving:boolean;onInput:(value:string)=>void;onClose:()=>void;onSave:()=>void}) {
+  return <div className="auth-backdrop" role="presentation"><div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="username-title"><button className="auth-close" aria-label="Close username setup" onClick={onClose}>LATER</button><small>LEADERBOARD IDENTITY</small><h2 id="username-title">Choose your username</h2><p>This is the name other players will see on the leaderboard.</p><input className="username-input" value={input} onChange={event=>onInput(event.target.value)} placeholder="Enter username" maxLength={20} autoFocus/><small>3-20 letters, numbers, _ or -</small>{error && <div className="username-error">{error}</div>}<button className="gold-btn username-submit" disabled={saving} onClick={onSave}>{saving ? "SAVING..." : "CONTINUE -&gt;"}</button></div></div>;
+}
+
+function ChallengePage({challengeId,wallet,onConnect,onStart}:{challengeId:string;wallet:string|null;onConnect:()=>void;onStart:(challengeId:string)=>Promise<void>}) {
+  const [challenge,setChallenge]=useState<Challenge|null>(null);
+  const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{getChallenge(challengeId).then(setChallenge).catch(error=>setError(error instanceof Error ? error.message : "Could not load challenge"))},[challengeId]);
+  if(error) return <main className="game-shell"><section className="challenge-page"><small>CHALLENGE</small><h1>Challenge unavailable</h1><p>{error}</p><a className="gold-btn" href="/">BACK TO OPERATOR</a></section></main>;
+  if(!challenge) return <main className="game-shell"><section className="challenge-page"><small>LOADING CHALLENGE</small><h1>Same puzzle.</h1><p>Loading the server-owned challenge...</p></section></main>;
+  return <main className="game-shell"><header className="nav"><a className="back-editorial" href="/">&lt;- OPERATOR</a><button className="wordmark"><img className="brand-logo" src="/logo/operator-mark.svg" alt=""/><span className="wordmark-main">OPERATOR</span><span className="wordmark-sub">BY NIMIQ</span></button><div className="game-nav-title">CHALLENGE</div></header><section className="challenge-page"><small>CHALLENGE FROM</small><h1>@{challenge.creatorUsername}</h1><div className="challenge-mantra"><b>Same puzzle.</b><b>Same seed.</b><b>Beat their score.</b></div><p>{challenge.status === "COMPLETED" ? `Winner: ${challenge.winnerUsername ? `@${challenge.winnerUsername}` : "Draw"}` : challenge.status === "IN_PROGRESS" ? "Your friend has joined. Submit your best run." : "Waiting for you to join this challenge."}</p>{challenge.status !== "COMPLETED" && <button className="gold-btn" onClick={()=>{if(wallet) void onStart(challengeId); else onConnect();}}>{wallet ? "START CHALLENGE" : "SIGN IN TO PLAY"} -&gt;</button>}<div className="challenge-results">{challenge.creatorScore !== null && <div><span>@{challenge.creatorUsername}</span><b>{challenge.creatorScore.toLocaleString()}</b></div>}{challenge.opponentScore !== null && <div><span>@{challenge.opponentUsername || "Opponent"}</span><b>{challenge.opponentScore.toLocaleString()}</b></div>}</div></section></main>;
 }
 
 function GameShell({title,onBack,children}:{title:string;onBack:()=>void;children:any}){return <main className="game-shell"><header className="nav"><button className="back-editorial" onClick={onBack}>&lt;- CHALLENGES</button><button className="wordmark"><img className="brand-logo" src="/logo/operator-mark.svg" alt=""/><span className="wordmark-main">OPERATOR</span><span className="wordmark-sub">BY NIMIQ</span></button><div className="game-nav-title">{title.toUpperCase()}</div></header><section className="game-stage">{children}</section></main>}
@@ -315,7 +355,11 @@ function ResultBox({result,onRestart}:{result:Result;onRestart:()=>void}) {
 function RankedResult({submission,preview,onRestart}:{submission:RankedSubmission;preview:Result;onRestart:()=>void}) {
   if (submission.state === "submitting") return <div className="result"><div className="result-icon"><Clock3/></div><small>SUBMITTING REPLAY</small><h2>...</h2><p>Validating run...</p></div>;
   if (submission.state === "rejected") return <div className="result"><div className="result-icon"><Shield/></div><small>RUN NOT ACCEPTED</small><h2>REJECTED</h2><p>{submission.error || "The server could not verify this replay."}</p><button className="primary" onClick={onRestart}><RotateCcw size={16}/> Try again</button></div>;
-  if (submission.state === "verified") return <div className="result"><div className="result-icon"><Trophy/></div><small>VERIFIED RESULT</small><h2>{submission.score?.toLocaleString()}</h2><p>+{submission.xp} XP - Server validated</p><button className="primary" onClick={onRestart}><RotateCcw size={16}/> Run again</button></div>;
+  if (submission.state === "verified") {
+    const challengeComplete = submission.opponentScore !== null && submission.opponentScore !== undefined;
+    const outcome = challengeComplete ? submission.winnerUsername === submission.playerUsername ? "YOU WIN" : submission.winnerUsername ? "YOU LOSE" : "DRAW" : "WAITING FOR OPPONENT";
+    return <div className="result"><div className="result-icon"><Trophy/></div><small>{challengeComplete ? "CHALLENGE COMPLETE" : "VERIFIED RESULT"}</small>{challengeComplete ? <div className="challenge-result"><div><span>@{submission.playerUsername}</span><b>{submission.score?.toLocaleString()}</b></div><div><span>@{submission.opponentUsername || "Opponent"}</span><b>{(submission.opponentScore ?? 0).toLocaleString()}</b></div><strong>{outcome}</strong></div> : <><h2>{submission.score?.toLocaleString()}</h2><p>+{submission.xp} XP - Waiting for opponent</p></>}<button className="primary" onClick={onRestart}><RotateCcw size={16}/> Run again</button></div>;
+  }
   return <div className="result"><div className="result-icon"><Clock3/></div><small>PREVIEW</small><h2>{preview.score.toLocaleString()}</h2><p>Waiting for validation...</p></div>;
 }
 

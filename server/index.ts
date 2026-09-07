@@ -35,6 +35,7 @@ const db = {
 const sessionSecret = process.env.SESSION_SECRET || "development-only-change-me";
 const dailySecret = process.env.DAILY_SECRET || "development-daily-secret";
 const rankedGames = new Set<RankedGameId>(["block-rush", "nim-pin", "memory", "vault", "sync"]);
+const challengeGames = new Set<RankedGameId>(["nim-pin", "memory", "vault"]);
 const gameLimits: Record<string, number> = { "block-rush": 30000, "nim-pin": 12000, memory: 2500, vault: 10000, sync: 30000 };
 
 await db.query(`
@@ -100,45 +101,60 @@ app.post("/challenges", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ error: "ranked session required" }, 401);
   const body = await c.req.json<{ gameId?: RankedGameId }>();
-  if (!body.gameId || !rankedGames.has(body.gameId)) return c.json({ error: "game is not challenge-capable" }, 400);
+  if (!body.gameId || !challengeGames.has(body.gameId)) return c.json({ error: "game is not challenge-capable" }, 400);
+  const creator = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
+  if (!creator?.username) return c.json({ error: "username required before creating a challenge" }, 409);
   const id = randomBytes(16).toString("hex");
   const token = randomBytes(8).toString("base64url");
   const seed = randomBytes(16).toString("hex");
   const created = now();
   await db.query("INSERT INTO friend_challenges(id, token, game_id, creator_address, seed, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", [id, token, body.gameId, address, seed, iso(created), iso(created + 24 * 60 * 60_000)]);
-  return c.json({ token, gameId: body.gameId, seed, expiresAt: iso(created + 24 * 60 * 60_000) });
+  return c.json({ challengeId: id, token: id, gameId: body.gameId, seed, creatorUsername: creator.username, opponentUsername: null, creatorScore: null, opponentScore: null, winnerUsername: null, status: "WAITING", expiresAt: iso(created + 24 * 60 * 60_000) });
 });
 
 app.get("/challenges/:token", async c => {
-  const row = (await db.query("SELECT token, game_id, creator_address, opponent_address, creator_score, opponent_score, expires_at FROM friend_challenges WHERE token = $1", [c.req.param("token")])).rows[0] as any;
+  const challengeId = c.req.param("token");
+  const row = (await db.query("SELECT f.id, f.token, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.expires_at, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.id = $1 OR f.token = $2", [challengeId, challengeId])).rows[0] as any;
   if (!row || Date.parse(row.expires_at) <= now()) return c.json({ error: "challenge not found or expired" }, 404);
-  return c.json({ token: row.token, gameId: row.game_id, creator: `${row.creator_address.slice(0, 6)}…${row.creator_address.slice(-4)}`, joined: Boolean(row.opponent_address), creatorScore: row.creator_score, opponentScore: row.opponent_score, expiresAt: row.expires_at });
+  const status = row.creator_score !== null && row.opponent_score !== null ? "COMPLETED" : row.opponent_address ? "IN_PROGRESS" : "WAITING";
+  const winnerUsername = status === "COMPLETED" ? row.creator_score === row.opponent_score ? null : row.creator_score > row.opponent_score ? row.creator_username : row.opponent_username : null;
+  return c.json({ challengeId: row.id, token: row.id, gameId: row.game_id, creatorUsername: row.creator_username || "Unnamed Player", opponentUsername: row.opponent_username || null, creatorScore: row.creator_score, opponentScore: row.opponent_score, winnerUsername, status, createdAt: row.created_at, expiresAt: row.expires_at });
 });
 
 app.post("/challenges/:token/join", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ error: "ranked session required" }, 401);
-  const row = (await db.query("SELECT * FROM friend_challenges WHERE token = $1", [c.req.param("token")])).rows[0] as any;
+  const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
+  if (!account?.username) return c.json({ error: "username required before joining a challenge" }, 409);
+  const challengeId = c.req.param("token");
+  const row = (await db.query("SELECT * FROM friend_challenges WHERE id = $1 OR token = $2", [challengeId, challengeId])).rows[0] as any;
   if (!row || Date.parse(row.expires_at) <= now()) return c.json({ error: "challenge not found or expired" }, 404);
-  if (row.creator_address === address) return c.json({ error: "creator cannot join their own challenge" }, 400);
+  if (row.creator_address === address) return c.json({ challengeId: row.id, token: row.id, gameId: row.game_id, seed: row.seed, creatorUsername: account.username, opponentUsername: null, creatorScore: row.creator_score, opponentScore: row.opponent_score, winnerUsername: null, status: row.creator_score !== null && row.opponent_score !== null ? "COMPLETED" : "WAITING", expiresAt: row.expires_at });
   if (row.opponent_address && row.opponent_address !== address) return c.json({ error: "challenge already joined" }, 409);
-  await db.query("UPDATE friend_challenges SET opponent_address = $1 WHERE token = $2 AND opponent_address IS NULL", [address, row.token]);
-  return c.json({ token: row.token, gameId: row.game_id, seed: row.seed });
+  await db.query("UPDATE friend_challenges SET opponent_address = $1 WHERE id = $2 AND opponent_address IS NULL", [address, row.id]);
+  return c.json({ challengeId: row.id, token: row.id, gameId: row.game_id, seed: row.seed, creatorUsername: row.creator_username || "Unnamed Player", opponentUsername: account.username, creatorScore: row.creator_score, opponentScore: row.opponent_score, winnerUsername: null, status: "IN_PROGRESS", expiresAt: row.expires_at });
 });
 
 app.post("/challenges/:token/submit", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ error: "ranked session required" }, 401);
-  const row = (await db.query("SELECT * FROM friend_challenges WHERE token = $1", [c.req.param("token")])).rows[0] as any;
+  const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
+  if (!account?.username) return c.json({ error: "username required before submitting a challenge" }, 409);
+  const challengeId = c.req.param("token");
+  const row = (await db.query("SELECT * FROM friend_challenges WHERE id = $1 OR token = $2", [challengeId, challengeId])).rows[0] as any;
   if (!row || Date.parse(row.expires_at) <= now()) return c.json({ error: "challenge not found or expired" }, 404);
   if (row.creator_address !== address && row.opponent_address !== address) return c.json({ error: "wallet is not part of this challenge" }, 403);
+  if (row.creator_address !== address && !row.opponent_address) return c.json({ error: "join the challenge before submitting" }, 409);
   const body = await c.req.json<{ events?: GameEvent[] }>();
   const result = replay(row.game_id, row.seed, body.events || []);
   if (!result.valid) return c.json({ error: result.reason || "invalid replay" }, 400);
   const column = row.creator_address === address ? "creator_score" : "opponent_score";
   if (row[column] !== null) return c.json({ error: "challenge attempt already submitted" }, 409);
-  await db.query(`UPDATE friend_challenges SET ${column} = $1 WHERE token = $2 AND ${column} IS NULL`, [result.score, row.token]);
-  return c.json({ score: result.score, xp: result.xp, opponentScore: row.creator_address === address ? row.opponent_score : row.creator_score });
+  await db.query(`UPDATE friend_challenges SET ${column} = $1 WHERE id = $2 AND ${column} IS NULL`, [result.score, row.id]);
+  const latest = (await db.query("SELECT f.creator_score, f.opponent_score, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.id = $1", [row.id])).rows[0] as any;
+  const complete = latest.creator_score !== null && latest.opponent_score !== null;
+  const winnerUsername = complete ? latest.creator_score === latest.opponent_score ? null : latest.creator_score > latest.opponent_score ? latest.creator_username : latest.opponent_username : null;
+  return c.json({ score: result.score, xp: result.xp, opponentScore: row.creator_address === address ? latest.opponent_score : latest.creator_score, opponentUsername: row.creator_address === address ? latest.opponent_username : latest.creator_username, winnerUsername, status: complete ? "COMPLETED" : "IN_PROGRESS" });
 });
 
 app.post("/auth/nonce", async c => {

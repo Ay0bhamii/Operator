@@ -60,6 +60,30 @@ const cookie = (name: string, value: string, maxAge: number) => `${name}=${value
 const signSession = (id: string) => createHmac("sha256", sessionSecret).update(id).digest("hex");
 const seedFor = (day: string, gameId: string) => createHmac("sha256", dailySecret).update(`${day}:${gameId}`).digest("hex").slice(0, 32);
 
+function gradeFor(rating: number) {
+  return rating >= 2400 ? "DIAMOND" : rating >= 1900 ? "PLATINUM" : rating >= 1500 ? "GOLD" : rating >= 1200 ? "SILVER" : "BRONZE";
+}
+
+async function ratingFor(address: string) {
+  const row = (await db.query("SELECT COUNT(*) AS verified_runs, COALESCE(AVG(score), 0) AS average_score FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address])).rows[0];
+  const verifiedRuns = Number(row?.verified_runs ?? 0);
+  const rating = Math.min(3000, 1000 + Math.round(Number(row?.average_score ?? 0) / 10) + verifiedRuns * 5);
+  return { rating, grade: gradeFor(rating), verifiedRuns };
+}
+
+async function streakFor(address: string) {
+  const rows = (await db.query("SELECT DISTINCT day FROM scores WHERE address = $1 AND mode = 'daily' AND day IS NOT NULL ORDER BY day DESC LIMIT 100", [address])).rows as Array<{ day: string }>;
+  if (!rows.length) return 0;
+  const completed = new Set(rows.map(row => String(row.day).slice(0, 10)));
+  let cursor = new Date(`${rows[0].day}T00:00:00.000Z`);
+  let streak = 0;
+  while (completed.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor = new Date(cursor.getTime() - 86_400_000);
+  }
+  return streak;
+}
+
 function verifyNimiqMessage(message: string, signer: string, publicKeyHex: string, signatureHex: string) {
   const publicKey = PublicKey.deserialize(Buffer.from(publicKeyHex, "hex"));
   const signature = Signature.deserialize(Buffer.from(signatureHex, "hex"));
@@ -263,6 +287,9 @@ app.post("/runs/:id/submit", async c => {
   if (!result.valid) return c.json({ error: result.reason || "invalid replay" }, 400);
   if (run.mode === "practice") return c.json({ score: result.score, xp: result.xp, ranked: false });
 
+  const previousBestRow = await db.query("SELECT MAX(score) AS best FROM scores WHERE address = $1 AND game_id = $2 AND mode IN ('daily','ranked')", [address, run.game_id]);
+  const previousBest = previousBestRow.rows[0]?.best === null ? null : Number(previousBestRow.rows[0]?.best ?? 0);
+  const ratingBefore = await ratingFor(address);
   const created = iso(now());
   try {
     await db.query(
@@ -285,8 +312,9 @@ app.post("/runs/:id/submit", async c => {
     [run.game_id, best],
   );
   const rank = Number(rankRow.rows[0]?.rank ?? null);
+  const ratingAfter = await ratingFor(address);
 
-  return c.json({ score: result.score, xp: result.xp, rank, best });
+  return c.json({ score: result.score, xp: result.xp, rank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, ratingDelta: ratingAfter.rating - ratingBefore.rating });
 });
 
 app.get("/leaderboard", async c => {
@@ -302,12 +330,33 @@ app.get("/me", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ address: null, username: null, xp: 0, streak: 0, rating: 0, grade: "UNRANKED", verifiedRuns: 0 });
   const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
-  const { rows } = await db.query("SELECT COALESCE(SUM(xp), 0) AS xp, COUNT(*) AS verified_runs, COALESCE(AVG(score), 0) AS average_score FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address]);
-  const xp = Number(rows[0].xp);
-  const verifiedRuns = Number(rows[0].verified_runs);
-  const rating = Math.min(3000, 1000 + Math.round(Number(rows[0].average_score) / 10) + verifiedRuns * 5);
-  const grade = rating >= 2400 ? "DIAMOND" : rating >= 1900 ? "PLATINUM" : rating >= 1500 ? "GOLD" : rating >= 1200 ? "SILVER" : "BRONZE";
-  return c.json({ address, username: account?.username || null, xp, streak: 0, rating, grade, verifiedRuns });
+  const row = (await db.query("SELECT COALESCE(SUM(xp), 0) AS xp FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address])).rows[0];
+  const xp = Number(row?.xp ?? 0);
+  const stats = await ratingFor(address);
+  return c.json({ address, username: account?.username || null, xp, streak: await streakFor(address), rating: stats.rating, grade: stats.grade, verifiedRuns: stats.verifiedRuns });
+});
+
+app.get("/competitive-summary", async c => {
+  const address = await sessionAddress(c);
+  if (!address) return c.json({ authenticated: false, globalRank: null, nextTarget: null, personalBest: null, daily: null, streak: 0 });
+  const game = c.req.query("game") || "nim-pin";
+  if (!rankedGames.has(game as RankedGameId)) return c.json({ error: "game is not ranked-capable" }, 400);
+  const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
+  const xpRow = (await db.query("SELECT COALESCE(SUM(xp), 0) AS xp FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address])).rows[0];
+  const xp = Number(xpRow?.xp ?? 0);
+  const stats = await ratingFor(address);
+  const bestRow = (await db.query("SELECT MAX(score) AS best, COUNT(*) AS runs, MIN(created_at) AS first_run, MAX(created_at) AS latest_run FROM scores WHERE address = $1 AND game_id = $2 AND mode IN ('daily','ranked')", [address, game])).rows[0];
+  const ranking = (await db.query("SELECT s.address, MAX(s.score) AS score, MIN(s.created_at) AS created_at, a.username FROM scores s LEFT JOIN addresses a ON a.address = s.address WHERE s.game_id = $1 AND s.mode IN ('daily','ranked') GROUP BY s.address, a.username ORDER BY score DESC, created_at ASC", [game])).rows as Array<{ address: string; score: number; created_at: string; username?: string | null }>;
+  const currentRankIndex = ranking.findIndex(row => row.address === address);
+  const globalRank = currentRankIndex < 0 ? null : currentRankIndex + 1;
+  const next = globalRank && globalRank > 1 ? ranking[globalRank - 2] : null;
+  const day = new Date().toISOString().slice(0, 10);
+  const dailyGameId = dailyGame(day);
+  const dailyRows = (await db.query("SELECT s.address, s.score, a.username FROM scores s LEFT JOIN addresses a ON a.address = s.address WHERE s.game_id = $1 AND s.day = $2 AND s.mode = 'daily' ORDER BY s.score DESC, s.created_at ASC", [dailyGameId, day])).rows as Array<{ address: string; score: number; username?: string | null }>;
+  const dailyIndex = dailyRows.findIndex(row => row.address === address);
+  const dailySelf = dailyIndex < 0 ? null : dailyRows[dailyIndex];
+  const dailyAbove = dailyIndex > 0 ? dailyRows[dailyIndex - 1] : null;
+  return c.json({ authenticated: true, username: account?.username || null, xp, level: Math.floor(xp / 500) + 1, nextLevelXp: 500 - (xp % 500), rating: stats.rating, grade: stats.grade, verifiedRuns: stats.verifiedRuns, streak: await streakFor(address), globalRank, nextTarget: next ? { rank: globalRank! - 1, username: next.username || "Unnamed Player", score: Number(next.score), pointsAway: Number(next.score) - Number(bestRow?.best ?? 0) } : null, personalBest: bestRow?.best === null ? null : { score: Number(bestRow.best), runs: Number(bestRow.runs), firstRun: bestRow.first_run, latestRun: bestRow.latest_run }, daily: { gameId: dailyGameId, score: dailySelf ? Number(dailySelf.score) : null, rank: dailySelf ? dailyIndex + 1 : null, topScore: dailyRows[0] ? Number(dailyRows[0].score) : null, pointsToNext: dailyAbove && dailySelf ? Number(dailyAbove.score) - Number(dailySelf.score) : null, endsAt: new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString() } });
 });
 
 app.put("/me/username", async c => {

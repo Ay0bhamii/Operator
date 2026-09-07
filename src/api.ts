@@ -49,7 +49,7 @@ export async function startRun(gameId: string, mode: RunMode) {
 export async function submitRun(runId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/runs/${runId}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Run was rejected");
-  return await response.json() as { score: number; xp: number; rank: number | null; best: number; ranked?: boolean };
+  return await response.json() as { score: number; xp: number; rank: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; ratingDelta?: number; ranked?: boolean };
 }
 
 export async function getLeaderboard(gameId: string, period: "daily" | "all" = "all") {
@@ -62,6 +62,28 @@ export async function getMe() {
   const response = await fetch(`${API_URL}/me`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load operator profile");
   return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; verifiedRuns: number };
+}
+
+export type CompetitiveSummary = {
+  authenticated: boolean;
+  username?: string | null;
+  xp?: number;
+  level?: number;
+  nextLevelXp?: number;
+  rating?: number;
+  grade?: string;
+  verifiedRuns?: number;
+  streak?: number;
+  globalRank: number | null;
+  nextTarget: { rank: number; username: string; score: number; pointsAway: number } | null;
+  personalBest: { score: number; runs: number; firstRun: string; latestRun: string } | null;
+  daily: { gameId: string; score: number | null; rank: number | null; topScore: number | null; pointsToNext: number | null; endsAt: string } | null;
+};
+
+export async function getCompetitiveSummary(gameId: string) {
+  const response = await fetch(`${API_URL}/competitive-summary?game=${encodeURIComponent(gameId)}`, { credentials: "include" });
+  if (!response.ok) throw new Error("Could not load competitive summary");
+  return await response.json() as CompetitiveSummary;
 }
 
 export async function updateUsername(username: string) {
@@ -116,5 +138,5 @@ export async function joinChallenge(challengeId: string) {
 export async function submitChallenge(challengeId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Challenge run was rejected");
-  return await response.json() as { score: number; xp: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
+  return await response.json() as { score: number; xp: number; rank?: number | null; previousBest?: number | null; improvement?: number; personalBest?: boolean; rating?: number; grade?: string; ratingDelta?: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
 }

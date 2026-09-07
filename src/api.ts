@@ -90,6 +90,21 @@ export async function getCompetitiveSummary(gameId: string) {
   return await response.json() as CompetitiveSummary;
 }
 
+export type Achievement = { id: string; name: string; description: string; rarity: string; xp: number; unlocked: boolean; unlockedAt?: string };
+export type ChallengeHistory = { challengeId: string; gameId: string; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string };
+
+export async function getAchievements() {
+  const response = await fetch(`${API_URL}/achievements`, { credentials: "include" });
+  if (!response.ok) throw new Error("Could not load achievements");
+  return await response.json() as Achievement[];
+}
+
+export async function getChallengeHistory() {
+  const response = await fetch(`${API_URL}/challenges/history`, { credentials: "include" });
+  if (!response.ok) throw new Error("Could not load challenge history");
+  return await response.json() as ChallengeHistory[];
+}
+
 export async function updateUsername(username: string) {
   const response = await fetch(`${API_URL}/me/username`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) });
   const body = await response.json() as { username?: string; error?: string };

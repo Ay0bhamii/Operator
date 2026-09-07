@@ -605,7 +605,7 @@ app.get("/me", async c => {
   const row = (await db.query("SELECT COALESCE((SELECT SUM(xp) FROM scores WHERE address = $1 AND mode IN ('daily','ranked')), 0) + COALESCE((SELECT SUM(xp) FROM player_achievements WHERE address = $2), 0) AS xp", [address, address])).rows[0];
   const xp = Number(row?.xp ?? 0);
   const stats = await ratingFor(address);
-  return c.json({ address, username: account?.username || null, xp, streak: await streakFor(address), rating: stats.rating, grade: stats.grade, displayGrade: displayGrade(stats.rating), verifiedRuns: stats.verifiedRuns, ...levelFor(xp), ...ratingProgress(stats.rating) });
+  return c.json({ address, username: account?.username || null, streak: await streakFor(address), rating: stats.rating, grade: stats.grade, displayGrade: displayGrade(stats.rating), verifiedRuns: stats.verifiedRuns, ...levelFor(xp), ...ratingProgress(stats.rating) });
 });
 
 app.get("/competitive-summary", async c => {

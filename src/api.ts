@@ -49,7 +49,7 @@ export async function startRun(gameId: string, mode: RunMode) {
 export async function submitRun(runId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/runs/${runId}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Run was rejected");
-  return await response.json() as { score: number; xp: number; rank: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; ratingDelta?: number; ranked?: boolean };
+  return await response.json() as { score: number; xp: number; rank: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean };
 }
 
 export async function getLeaderboard(gameId: string, period: "daily" | "all" = "all") {
@@ -72,6 +72,10 @@ export type CompetitiveSummary = {
   nextLevelXp?: number;
   rating?: number;
   grade?: string;
+  nextGrade?: string | null;
+  nextGradeRating?: number | null;
+  ratingToNext?: number;
+  progressPercent?: number;
   verifiedRuns?: number;
   streak?: number;
   globalRank: number | null;
@@ -138,5 +142,5 @@ export async function joinChallenge(challengeId: string) {
 export async function submitChallenge(challengeId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/challenges/${encodeURIComponent(challengeId)}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Challenge run was rejected");
-  return await response.json() as { score: number; xp: number; rank?: number | null; previousBest?: number | null; improvement?: number; personalBest?: boolean; rating?: number; grade?: string; ratingDelta?: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
+  return await response.json() as { score: number; xp: number; rank?: number | null; previousBest?: number | null; improvement?: number; personalBest?: boolean; rating?: number; grade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; opponentScore: number | null; opponentUsername: string | null; winnerUsername: string | null; status: Challenge["status"] };
 }

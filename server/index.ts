@@ -64,6 +64,14 @@ function gradeFor(rating: number) {
   return rating >= 2400 ? "DIAMOND" : rating >= 1900 ? "PLATINUM" : rating >= 1500 ? "GOLD" : rating >= 1200 ? "SILVER" : "BRONZE";
 }
 
+function ratingProgress(rating: number) {
+  const thresholds = [{ grade: "SILVER", rating: 1200 }, { grade: "GOLD", rating: 1500 }, { grade: "PLATINUM", rating: 1900 }, { grade: "DIAMOND", rating: 2400 }];
+  const next = thresholds.find(item => rating < item.rating);
+  if (!next) return { nextGrade: null, nextGradeRating: null, ratingToNext: 0, progressPercent: 100 };
+  const currentFloor = thresholds.filter(item => item.rating <= rating).at(-1)?.rating ?? 1000;
+  return { nextGrade: next.grade, nextGradeRating: next.rating, ratingToNext: next.rating - rating, progressPercent: Math.round(((rating - currentFloor) / (next.rating - currentFloor)) * 100) };
+}
+
 async function ratingFor(address: string) {
   const row = (await db.query("SELECT COUNT(*) AS verified_runs, COALESCE(AVG(score), 0) AS average_score FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address])).rows[0];
   const verifiedRuns = Number(row?.verified_runs ?? 0);
@@ -314,7 +322,7 @@ app.post("/runs/:id/submit", async c => {
   const rank = Number(rankRow.rows[0]?.rank ?? null);
   const ratingAfter = await ratingFor(address);
 
-  return c.json({ score: result.score, xp: result.xp, rank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, ratingDelta: ratingAfter.rating - ratingBefore.rating });
+  return c.json({ score: result.score, xp: result.xp, rank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, ratingDelta: ratingAfter.rating - ratingBefore.rating, ...ratingProgress(ratingAfter.rating) });
 });
 
 app.get("/leaderboard", async c => {
@@ -356,7 +364,7 @@ app.get("/competitive-summary", async c => {
   const dailyIndex = dailyRows.findIndex(row => row.address === address);
   const dailySelf = dailyIndex < 0 ? null : dailyRows[dailyIndex];
   const dailyAbove = dailyIndex > 0 ? dailyRows[dailyIndex - 1] : null;
-  return c.json({ authenticated: true, username: account?.username || null, xp, level: Math.floor(xp / 500) + 1, nextLevelXp: 500 - (xp % 500), rating: stats.rating, grade: stats.grade, verifiedRuns: stats.verifiedRuns, streak: await streakFor(address), globalRank, nextTarget: next ? { rank: globalRank! - 1, username: next.username || "Unnamed Player", score: Number(next.score), pointsAway: Number(next.score) - Number(bestRow?.best ?? 0) } : null, personalBest: bestRow?.best === null ? null : { score: Number(bestRow.best), runs: Number(bestRow.runs), firstRun: bestRow.first_run, latestRun: bestRow.latest_run }, daily: { gameId: dailyGameId, score: dailySelf ? Number(dailySelf.score) : null, rank: dailySelf ? dailyIndex + 1 : null, topScore: dailyRows[0] ? Number(dailyRows[0].score) : null, pointsToNext: dailyAbove && dailySelf ? Number(dailyAbove.score) - Number(dailySelf.score) : null, endsAt: new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString() } });
+  return c.json({ authenticated: true, username: account?.username || null, xp, level: Math.floor(xp / 500) + 1, nextLevelXp: 500 - (xp % 500), rating: stats.rating, grade: stats.grade, ...ratingProgress(stats.rating), verifiedRuns: stats.verifiedRuns, streak: await streakFor(address), globalRank, nextTarget: next ? { rank: globalRank! - 1, username: next.username || "Unnamed Player", score: Number(next.score), pointsAway: Number(next.score) - Number(bestRow?.best ?? 0) } : null, personalBest: bestRow?.best === null ? null : { score: Number(bestRow.best), runs: Number(bestRow.runs), firstRun: bestRow.first_run, latestRun: bestRow.latest_run }, daily: { gameId: dailyGameId, score: dailySelf ? Number(dailySelf.score) : null, rank: dailySelf ? dailyIndex + 1 : null, topScore: dailyRows[0] ? Number(dailyRows[0].score) : null, pointsToNext: dailyAbove && dailySelf ? Number(dailyAbove.score) - Number(dailySelf.score) : null, endsAt: new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString() } });
 });
 
 app.put("/me/username", async c => {

@@ -11,6 +11,8 @@ export type ReplayResult = { score: number; xp: number; valid: boolean; complete
 
 const sequenceChars = "QWERASD";
 const memoryTokens = ["NQ", "7F", "3A", "C2", "91", "D8"];
+export const blockColors = ["cyan", "lime", "violet"] as const;
+export type BlockCell = (typeof blockColors)[number] | null;
 
 function seeded(seed: string) {
   let state = 2166136261;
@@ -24,6 +26,37 @@ function seeded(seed: string) {
     value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+export function blockGroup(board: BlockCell[], start: number) {
+  const color = board[start];
+  if (!color) return new Set<number>();
+  const group = new Set<number>(), pending = [start];
+  while (pending.length) {
+    const index = pending.pop()!;
+    if (group.has(index) || board[index] !== color) continue;
+    group.add(index);
+    const row = Math.floor(index / 11), column = index % 11;
+    if (row > 0) pending.push(index - 11);
+    if (row < 7) pending.push(index + 11);
+    if (column > 0) pending.push(index - 1);
+    if (column < 10) pending.push(index + 1);
+  }
+  return group;
+}
+
+export function clearBlockGroup(board: BlockCell[], group: Set<number>): BlockCell[] {
+  const remaining = board.filter((_, index) => !group.has(index));
+  return [...Array<BlockCell>(88 - remaining.length).fill(null), ...remaining];
+}
+
+export function createBlockBoard(seed: string): BlockCell[] {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const random = seeded(`block-rush:${seed}:${attempt}`);
+    const board = Array.from({ length: 88 }, () => blockColors[Math.floor(random() * blockColors.length)]);
+    if (board.some((_, index) => blockGroup(board, index).size >= 3)) return board;
+  }
+  return Array.from({ length: 88 }, () => "cyan");
 }
 
 /** Difficulty is encoded into a server-issued seed, so the client and replay verifier

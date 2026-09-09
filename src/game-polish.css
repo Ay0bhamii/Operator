@@ -1,0 +1,56 @@
+/* Game arena: keep controls legible, responsive, and keyboard accessible. */
+:is(button, a, input, select):focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 4px;
+}
+button:disabled { cursor: not-allowed; opacity: .5; }
+.game-stage {
+  background: radial-gradient(ellipse at top, rgba(0,200,255,.09), transparent 65%);
+}
+.game-stage > .challenge {
+  padding: clamp(18px, 4vw, 36px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(19,31,49,.97), rgba(8,13,24,.98));
+  box-shadow: 0 24px 80px #0005, inset 0 1px 0 #ffffff0a;
+}
+.hud { align-items: center; text-align: left; }
+.hud b { font-variant-numeric: tabular-nums; color: var(--gold); }
+.timer {
+  padding: 10px 14px;
+  border: 1px solid #00c8ff40;
+  border-radius: 12px;
+  background: #00c8ff0a;
+  font-variant-numeric: tabular-nums;
+}
+.keypad button, .memory-options button, .key-row button {
+  border-radius: 12px;
+  box-shadow: 0 4px 0 #0005;
+  transition: background .15s, transform .15s, border-color .15s;
+  touch-action: manipulation;
+}
+.keypad button:active, .memory-options button:active, .key-row button:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+.hint { line-height: 1.7; color: #bac8d9; }
+.result { border-radius: 24px; border: 1px solid #00c8ff40; background: #101827; }
+.result-icon { box-shadow: 0 0 40px #00c8ff18; }
+.sync-track { border-radius: 14px; overflow: hidden; }
+@media (hover: hover) {
+  .keypad button:hover, .memory-options button:hover, .key-row button:hover {
+    background: #00c8ff20; border-color: var(--cyan);
+  }
+}
+@media (max-width: 560px) {
+  .game-stage > .challenge { padding: 16px 10px; border-radius: 16px; }
+  .timer { padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

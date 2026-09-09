@@ -23,7 +23,7 @@ const db = {
     if (!sqliteDb) throw new Error("Database is not configured");
     const sqliteSql = sql.replace(/\$\d+/g, "?");
     const lower = sql.trim().toLowerCase();
-    if (lower.startsWith("create ") || lower.startsWith("drop ") || lower.startsWith("alter ") || lower.startsWith("delete ")) {
+    if (lower.startsWith("create ") || lower.startsWith("drop ") || lower.startsWith("alter ")) {
       sqliteDb.exec(sqliteSql);
       return { rows: [], rowCount: 0 } as { rows: any[]; rowCount?: number };
     }
@@ -321,7 +321,7 @@ app.post("/challenges", async c => {
   const seed = randomBytes(16).toString("hex");
   const created = now();
   await db.query("INSERT INTO friend_challenges(id, token, game_id, creator_address, seed, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", [id, token, body.gameId, address, seed, iso(created), iso(created + 24 * 60 * 60_000)]);
-  return c.json({ challengeId: id, token: id, gameId: body.gameId, seed, creatorUsername: creator.username, opponentUsername: null, creatorScore: null, opponentScore: null, winnerUsername: null, status: "WAITING", expiresAt: iso(created + 24 * 60 * 60_000) });
+  return c.json({ challengeId: id, token, gameId: body.gameId, seed, creatorUsername: creator.username, opponentUsername: null, creatorScore: null, opponentScore: null, winnerUsername: null, status: "WAITING", expiresAt: iso(created + 24 * 60 * 60_000) });
 });
 
 app.get("/challenges/history", async c => {

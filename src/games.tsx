@@ -155,7 +155,7 @@ function NimGrid({ ranked, rankedSubmission, onEvent, onFinish, onPlayAgain, onV
 
 function NimPin({ seed, rankedSubmission, onEvent, onFinish, onPlayAgain, onViewRankings }: { seed?: string; rankedSubmission: RankedSubmission; onEvent: (event: Omit<GameEvent, "t">) => void; onFinish: (r: Result) => void; onPlayAgain?: () => void; onViewRankings?: () => void }) {
   const initialPin = seed ? createPuzzle("nim-pin", seed) : null;
-  const pin = initialPin?.gameId === "nim-pin" ? initialPin.pin : String(rand(9000) + 1000);
+  const [pin] = useState(() => initialPin?.gameId === "nim-pin" ? initialPin.pin : String(rand(9000) + 1000));
   const [input, setInput] = useState(""); const [time, setTime] = useState(12); const [done, setDone] = useState(false);
   useEffect(() => { if (done) return; const t = setInterval(() => setTime(x => { if (x <= .1) { setDone(true); onFinish({ score: 0, xp: 25 }); return 0 } return x - .1 }), 100); return () => clearInterval(t) }, [done, onFinish]);
   function key(k: string) { if (done) return; const n = input + k; if (n.length <= 4) setInput(n); if (n.length === 4) { onEvent({ type: "key", value: n }); if (n === pin) { const score = Math.max(100, Math.round(time * 100)); setDone(true); onFinish({ score, xp: 125, time: 12 - time }) } else { setDone(true); onFinish({ score: 0, xp: 25 }) } } }
@@ -180,7 +180,7 @@ function Memory({ seed, rankedSubmission, onEvent, onFinish, onPlayAgain, onView
   function pick(x: string) { if (done) return; const next = [...input, x]; onEvent({ type: "choice", value: x }); setInput(next); if (next.length === code.length) { const ok = next.every((v, i) => v === code[i]); setDone(true); onFinish({ score: ok ? 600 : 0, xp: ok ? 160 : 20 }) } }
   const localRestart = () => location.reload();
   if (done) return rankedOrLocal(Boolean(seed), rankedSubmission, { score: input.every((v, i) => v === code[i]) ? 600 : 0, xp: input.every((v, i) => v === code[i]) ? 160 : 20 }, localRestart, onPlayAgain, onViewRankings);
-  return <div className="challenge narrow"><GameHUD label="ADDRESS MEMORY" value={show ? "MEMORIZE" : "REBUILD"} timer={show ? "2.5s" : "8"}/><div className="memory-code">{show ? code.map(x => <b key={x}>{x}</b>) : input.map(x => <b key={Math.random()}>{x}</b>)}</div>{!show && <div className="memory-options">{options.map((x, i) => <button key={i} onClick={() => pick(x)}>{x}</button>)}</div>}</div>;
+  return <div className="challenge narrow"><GameHUD label="ADDRESS MEMORY" value={show ? "MEMORIZE" : "REBUILD"} timer={show ? "2.5s" : "8"}/><div className="memory-code" aria-live="polite">{show ? code.map((x, i) => <b key={`${x}-${i}`}>{x}</b>) : input.map((x, i) => <b key={`${x}-${i}`}>{x}</b>)}</div>{!show && <div className="memory-options" role="group" aria-label="Memory token choices">{options.map((x, i) => <button key={`${x}-${i}`} aria-label={`Choose token ${x}`} onClick={() => pick(x)}>{x}</button>)}</div>}</div>;
 }
 
 function RotatingLock({ count, limit, seed, rankedSubmission, onEvent, title, onFinish, onPlayAgain, onViewRankings }: { count: number; limit: number; seed?: string; rankedSubmission: RankedSubmission; onEvent: (event: Omit<GameEvent, "t">) => void; title: string; onFinish: (r: Result) => void; onPlayAgain?: () => void; onViewRankings?: () => void }) {

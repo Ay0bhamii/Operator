@@ -102,7 +102,12 @@ function App() {
   const [achievements,setAchievements]=useState<Achievement[]>([]);
   const [challengeHistory,setChallengeHistory]=useState<ChallengeHistory[]>([]);
   const [xp,setXp]=useState(()=>Number(localStorage.getItem("nhl-xp")||0));
-  const [scores,setScores]=useState<Record<string,number>>(()=>JSON.parse(localStorage.getItem("nhl-scores")||"{}"));
+  const [scores,setScores]=useState<Record<string,number>>(()=>{
+    try {
+      const stored = JSON.parse(localStorage.getItem("nhl-scores") || "{}");
+      return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    } catch { return {}; }
+  });
   const [dailyDone,setDailyDone]=useState(()=>localStorage.getItem("nhl-daily")===new Date().toISOString().slice(0,10));
 
   useEffect(()=>localStorage.setItem("nhl-xp",String(xp)),[xp]);
@@ -204,12 +209,12 @@ function App() {
     }
   }
 
-  async function createFriendChallenge(){
+  async function createFriendChallenge(gameId: GameId = challengeGame){
     setChallengeMessage(null);
     if(!wallet){ setChallengeMessage("Connect your wallet to create a challenge"); return; }
     if(!profile?.username){ setUsernamePrompt(true); setChallengeMessage("Choose a username before creating a challenge"); return; }
     try {
-      const challenge = await createChallenge(challengeGame);
+      const challenge = await createChallenge(gameId);
       const link = `${window.location.origin}/challenge/${challenge.challengeId}`;
       setChallenge(challenge);
       setChallengeToken(challenge.token);
@@ -224,7 +229,7 @@ function App() {
     setChallengeGame(gameId as GameId);
     setChallenge(null);
     setChallengeMessage(null);
-    await createFriendChallenge();
+    await createFriendChallenge(gameId as GameId);
   }
 
   async function joinFriendChallenge(){
@@ -478,7 +483,7 @@ function NimGrid({ranked,rankedSubmission,onEvent,onFinish}:{ranked:boolean;rank
 
 function NimPin({seed,rankedSubmission,onEvent,onFinish}:{seed?:string;rankedSubmission:RankedSubmission;onEvent:(event:Omit<GameEvent,"t">)=>void;onFinish:(r:Result)=>void}) {
   const initialPin = seed ? createPuzzle("nim-pin", seed) : null;
-  const pin = initialPin?.gameId === "nim-pin" ? initialPin.pin : String(rand(9000)+1000);
+  const [pin] = useState(()=>initialPin?.gameId === "nim-pin" ? initialPin.pin : String(rand(9000)+1000));
   const [input,setInput]=useState(""); const [time,setTime]=useState(12); const [show,setShow]=useState(true); const [done,setDone]=useState(false);
   useEffect(()=>{const timer=window.setTimeout(()=>setShow(false),2500);return()=>window.clearTimeout(timer)},[]);
   useEffect(()=>{if(done)return;const t=setInterval(()=>setTime(x=>{if(x<=.1){setDone(true);onFinish({score:0,xp:25});return 0}return x-.1}),100);return()=>clearInterval(t)},[done,onFinish]);
@@ -499,10 +504,13 @@ function Memory({seed,rankedSubmission,onEvent,onFinish}:{seed?:string;rankedSub
   const initialPuzzle = seed ? createPuzzle("memory", seed) : null; const [code]=useState<string[]>(()=>initialPuzzle?.gameId === "memory" ? initialPuzzle.tokens : Array.from({length:6},()=>["NQ","7F","3A","C2","91","D8"][rand(6)])); const [show,setShow]=useState(true); const [input,setInput]=useState<string[]>([]); const [time,setTime]=useState(12); const [done,setDone]=useState(false);
   useEffect(()=>{const t=setTimeout(()=>setShow(false),2500);return()=>clearTimeout(t)},[]);
   useEffect(()=>{if(done)return;const timer=setInterval(()=>setTime(value=>{if(value<=.1){setDone(true);onFinish({score:0,xp:0,time:12});return 0}return value-.1}),100);return()=>clearInterval(timer)},[done,onFinish]);
-  const options=useMemo(()=>shuffle([...code,...Array.from({length:6},()=>["AA","1B","EF","42","09","BC"][rand(6)])]),[code]);
+  const options=useMemo(()=>{
+    const decoys = ["AA","1B","EF","42","09","BC"].filter(token=>!code.includes(token));
+    return shuffle([...code,...decoys.slice(0, 6)]);
+  },[code]);
   function pick(x:string){if(done)return;const next=[...input,x];onEvent({type:"choice",value:x});setInput(next);if(next.length===code.length){const ok=next.every((v,i)=>v===code[i]);setDone(true);onFinish({score:ok?600:0,xp:ok?160:20})}}
   if(done){const preview={score:input.every((v,i)=>v===code[i])?600:0,xp:input.every((v,i)=>v===code[i])?160:20};return seed?<RankedResult submission={rankedSubmission} preview={preview} onRestart={()=>location.reload()}/>:<ResultBox result={preview} onRestart={()=>location.reload()}/>}
-  return <div className="challenge narrow"><GameHUD label="ADDRESS MEMORY" value={show?"MEMORIZE":"REBUILD"} timer={`${time.toFixed(1)}s`}/><div className="memory-code">{show?code.map(x=><b key={x}>{x}</b>):input.map(x=><b key={Math.random()}>{x}</b>)}</div>{!show&&<div className="memory-options">{options.map((x,i)=><button key={i} onClick={()=>pick(x)}>{x}</button>)}</div>}</div>
+  return <div className="challenge narrow"><GameHUD label="ADDRESS MEMORY" value={show?"MEMORIZE":"REBUILD"} timer={`${time.toFixed(1)}s`}/><div className="memory-code" aria-live="polite">{show?code.map((x,i)=><b key={`${x}-${i}`}>{x}</b>):input.map((x,i)=><b key={`${x}-${i}`}>{x}</b>)}</div>{!show&&<div className="memory-options" role="group" aria-label="Memory token choices">{options.map((x,i)=><button key={`${x}-${i}`} aria-label={`Choose token ${x}`} onClick={()=>pick(x)}>{x}</button>)}</div>}</div>
 }
 
 function RotatingLock({count,limit,seed,rankedSubmission,onEvent,title,onFinish}:{count:number;limit:number;seed?:string;rankedSubmission:RankedSubmission;onEvent:(event:Omit<GameEvent,"t">)=>void;title:string;onFinish:(r:Result)=>void}) {

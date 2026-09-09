@@ -8,7 +8,7 @@ OPERATOR is a competitive skill platform where scores are not trusted—they are
 
 OPERATOR is a browser and Nimiq Pay skill platform. Each challenge is a fast test of memory, timing, sequence recognition, or precision. Players can practice locally as guests or connect a Nimiq wallet to enter ranked runs.
 
-The product promise is simple: **don�t just play. Prove it.**
+The product promise is simple: **dont just play. Prove it.**
 
 ## Why Nimiq is essential
 

@@ -79,12 +79,14 @@ export function Game({ id, run, rankedSubmission, onEvent, onFinish, onPlayAgain
 }
 
 function ResultBox({ result, onRestart }: { result: Result; onRestart: () => void }) {
-  return <div className="result"><div className="result-icon"><Trophy/></div><small>PRACTICE COMPLETE</small><h2>{result.score.toLocaleString()}</h2><p>+{result.xp} XP (local)</p><button className="primary" onClick={onRestart}><RotateCcw size={16}/> Play again</button></div>;
+  void onRestart;
+  return <div className="result"><div className="result-icon"><Trophy/></div><small>PRACTICE COMPLETE</small><h2>{result.score.toLocaleString()}</h2><p>+{result.xp} XP (local)</p><p className="result-hint">Return to operations to play a new challenge.</p></div>;
 }
 
-function RankedResult({ submission, preview, onRestart, onViewRankings }: { submission: RankedSubmission; preview: Result; onRestart: () => void; onViewRankings?: () => void }) {
+function RankedResult({ submission, preview, onRestart, onViewRankings }: { submission: RankedSubmission; preview: Result; onRestart?: () => void; onViewRankings?: () => void }) {
+  void onRestart;
   if (submission.state === "submitting") return <div className="result"><div className="result-icon"><Clock3/></div><small>SUBMITTING REPLAY</small><h2>...</h2><p>Validating run...</p></div>;
-  if (submission.state === "rejected") return <div className="result"><div className="result-icon"><Shield/></div><small>RUN NOT ACCEPTED</small><h2>REJECTED</h2><p>{submission.error || "The server could not verify this replay."}</p><button className="primary" onClick={onRestart}><RotateCcw size={16}/> Try again</button></div>;
+  if (submission.state === "rejected") return <div className="result"><div className="result-icon"><Shield/></div><small>RUN NOT ACCEPTED</small><h2>REJECTED</h2><p>{submission.error || "The server could not verify this replay."}</p><p className="result-hint">Ranked runs are single-use. Start a new verified run from operations.</p></div>;
   if (submission.state === "verified") {
     const challengeComplete = submission.opponentScore !== null && submission.opponentScore !== undefined;
     const isChallenge = Object.prototype.hasOwnProperty.call(submission, "opponentScore");
@@ -109,7 +111,6 @@ function RankedResult({ submission, preview, onRestart, onViewRankings }: { subm
         {submission.nextTarget && <div className="next-target-card"><small>YOUR NEXT TARGET</small><b>#{submission.nextTarget.rank} @{submission.nextTarget.username}</b><span>+{submission.nextTarget.pointsAway} points</span></div>}
       </>}
       <div className="result-actions">
-        <button className="primary" onClick={isChallenge ? () => { window.location.href = "/"; } : onRestart}><RotateCcw size={16}/> {isChallenge ? "Back to operations" : shortBy ? "Try again" : "Play again"}</button>
         {onViewRankings && <button className="ghost-btn" onClick={onViewRankings}>View rankings</button>}
       </div>
     </div>;
@@ -118,9 +119,10 @@ function RankedResult({ submission, preview, onRestart, onViewRankings }: { subm
 }
 
 function rankedOrLocal(ranked: boolean, rankedSubmission: RankedSubmission, preview: Result, localRestart: () => void, onPlayAgain?: () => void, onViewRankings?: () => void) {
-  const restart = onPlayAgain || localRestart;
+  void localRestart;
+  void onPlayAgain;
   return ranked
-    ? <RankedResult submission={rankedSubmission} preview={preview} onRestart={restart} onViewRankings={onViewRankings}/>
+    ? <RankedResult submission={rankedSubmission} preview={preview} onViewRankings={onViewRankings}/>
     : <ResultBox result={preview} onRestart={localRestart}/>;
 }
 

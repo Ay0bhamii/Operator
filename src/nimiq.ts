@@ -27,7 +27,7 @@ export async function connectNimiq(): Promise<string | null> {
     signed.signer = accounts[0];
   } else {
     const hub = new HubApi(HUB_URL);
-    signed = await hub.signMessage({ appName: "Nimiq Skill Arcade", message });
+    signed = await hub.signMessage({ appName: "OPERATOR", message });
   }
   const toHex = (value: string | Uint8Array) => {
     if (typeof value !== "string") return Array.from(value).map(byte => byte.toString(16).padStart(2, "0")).join("");

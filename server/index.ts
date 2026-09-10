@@ -13,7 +13,7 @@ const pgDb = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("localhost") ? false : { rejectUnauthorized: false },
 }) : null;
-const sqliteDb = pgDb ? null : new Database(process.env.DATABASE_FILE || "arcade.sqlite");
+const sqliteDb = pgDb ? null : new Database(process.env.DATABASE_FILE || "operator.sqlite");
 const db = {
   async query(sql: string, params: unknown[] = []) {
     if (pgDb) return pgDb.query(sql, params);
@@ -301,7 +301,7 @@ function verifyNimiqMessage(message: string, signer: string, publicKeyHex: strin
 }
 
 async function sessionAddress(c: any): Promise<string | null> {
-  const raw = c.req.header("Cookie")?.match(/arcade_session=([^;]+)/)?.[1];
+  const raw = c.req.header("Cookie")?.match(/operator_session=([^;]+)/)?.[1];
   if (!raw) return null;
   const [id, mac] = raw.split(".");
   if (!id || mac !== signSession(id)) return null;
@@ -442,15 +442,15 @@ app.post("/auth/verify", async c => {
   await db.query("INSERT INTO addresses(address, created_at) VALUES ($1, $2) ON CONFLICT (address) DO NOTHING", [address, iso(now())]);
   const id = randomBytes(24).toString("hex");
   await db.query("INSERT INTO sessions VALUES ($1, $2, $3)", [id, address, iso(now() + 30 * 24 * 60 * 60_000)]);
-  c.header("Set-Cookie", cookie("arcade_session", `${id}.${signSession(id)}`, 30 * 24 * 60 * 60));
+  c.header("Set-Cookie", cookie("operator_session", `${id}.${signSession(id)}`, 30 * 24 * 60 * 60));
   return c.json({ address });
 });
 
 app.post("/auth/logout", async c => {
-  const raw = c.req.header("Cookie")?.match(/arcade_session=([^;]+)/)?.[1];
+  const raw = c.req.header("Cookie")?.match(/operator_session=([^;]+)/)?.[1];
   const id = raw?.split(".")[0];
   if (id) await db.query("DELETE FROM sessions WHERE id = $1", [id]);
-  c.header("Set-Cookie", cookie("arcade_session", "", 0));
+  c.header("Set-Cookie", cookie("operator_session", "", 0));
   return c.json({ ok: true });
 });
 

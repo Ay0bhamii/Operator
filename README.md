@@ -53,6 +53,16 @@ The client never submits a score. Each run is bound to the authenticated operato
 
 ---
 
+### Judge demo (45–60 seconds)
+
+1. Open the live demo: guest onboarding strip, Daily Operation countdown, and today's featured game.
+2. Play as Guest, then connect a Nimiq wallet and finish one ranked Daily Operation run.
+3. Watch `SUBMITTING REPLAY` → `VERIFIED RESULT`, then Copy Proof from the Proof Card.
+4. Open Rankings/Profile: Verified badge/title, streak bonus, rating/XP, placement, and Operator of the Week.
+5. Replay the same run or alter events — the API consumes each run once, recomputes from events, and rejects invalid or reused submissions.
+
+---
+
 ### Cycle 2: verified identity & rewards
 
 - Verified Operator badge/title unlock only after wallet-signed ranked runs.

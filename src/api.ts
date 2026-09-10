@@ -52,7 +52,7 @@ export type RankedPeriod = "all" | "daily" | "weekly" | "season";
 export async function submitRun(runId: string, events: unknown[]) {
   const response = await fetch(`${API_URL}/runs/${runId}/submit`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
   if (!response.ok) throw new Error((await response.json()).error || "Run was rejected");
-  return await response.json() as { score: number; xp: number; completed?: boolean; rank: number | null; previousRank?: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; rating?: number; grade?: string; displayGrade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean; streak?: number; nextTarget?: NextTarget | null };
+  return await response.json() as { score: number; xp: number; completed?: boolean; rank: number | null; previousRank?: number | null; best: number; previousBest?: number | null; personalBest?: boolean; improvement?: number; streakBonusXp?: number; streakBonusLabel?: string | null; verifiedStreak?: number; verifiedStreakDay?: string | null; proofId?: string; proofCode?: string; proofText?: string; rating?: number; grade?: string; displayGrade?: string; ratingDelta?: number; nextGrade?: string | null; nextGradeRating?: number | null; ratingToNext?: number; progressPercent?: number; ranked?: boolean; streak?: number; nextTarget?: NextTarget | null };
 }
 
 export async function getLeaderboard(gameId: string = "all", period: RankedPeriod = "all") {
@@ -64,7 +64,7 @@ export async function getLeaderboard(gameId: string = "all", period: RankedPerio
 export async function getMe() {
   const response = await fetch(`${API_URL}/me`, { credentials: "include" });
   if (!response.ok) throw new Error("Could not load operator profile");
-  return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; displayGrade?: string; verifiedRuns: number; level?: number };
+  return await response.json() as { address: string | null; username: string | null; xp: number; streak: number; rating: number; grade: string; displayGrade?: string; verifiedRuns: number; title?: string | null; badge?: string | null; level?: number };
 }
 
 export type CompetitiveSummary = {
@@ -94,7 +94,7 @@ export async function getCompetitiveSummary(gameId: string) {
 }
 
 export type Achievement = { id: string; name: string; description: string; rarity: string; xp: number; unlocked: boolean; unlockedAt?: string };
-export type ChallengeHistory = { challengeId: string; gameId: string; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string };
+export type ChallengeHistory = { challengeId: string; gameId: string; stakeLabel?: string | null; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string };
 
 export async function getAchievements() {
   const response = await fetch(`${API_URL}/achievements`, { credentials: "include" });
@@ -129,18 +129,22 @@ export type Challenge = {
   challengeId: string;
   token: string;
   gameId: string;
+  stakeLabel?: string | null;
   seed?: string;
   creatorUsername: string;
   opponentUsername: string | null;
   creatorScore: number | null;
   opponentScore: number | null;
+  proofId?: string;
+  proofCode?: string;
+  proofText?: string;
   winnerUsername: string | null;
   status: "WAITING" | "IN_PROGRESS" | "COMPLETED" | "EXPIRED";
   expiresAt: string;
 };
 
-export async function createChallenge(gameId: string) {
-  const response = await fetch(`${API_URL}/challenges`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gameId }) });
+export async function createChallenge(gameId: string, stakeLabel?: string) {
+  const response = await fetch(`${API_URL}/challenges`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(stakeLabel ? { gameId, stakeLabel } : { gameId }) });
   if (!response.ok) throw new Error((await response.json()).error || "Could not create challenge");
   return await response.json() as Challenge & { seed: string };
 }
@@ -164,11 +168,14 @@ export async function submitChallenge(challengeId: string, events: unknown[]) {
 }
 
 export type DashboardGame = { gameId: string; best: number | null; rank: number | null; ranked: boolean; challengeCapable: boolean };
-export type DashboardChallenge = { challengeId: string; gameId: string; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string; expiresAt: string; incoming: boolean };
+export type DashboardChallenge = { challengeId: string; gameId: string; stakeLabel?: string | null; opponentUsername: string | null; yourScore: number | null; theirScore: number | null; outcome: "ACTIVE" | "DRAW" | "WIN" | "LOSS"; createdAt: string; expiresAt: string; incoming: boolean };
 export type Dashboard = {
   authenticated: boolean;
   operator: {
     username: string | null;
+    title?: string | null;
+    badge?: string | null;
+    streakBonus?: { bonusXp: number; label: string | null };
     rating: number;
     grade: string;
     displayGrade: string;
@@ -184,6 +191,7 @@ export type Dashboard = {
     ratingToNext?: number;
     progressPercent?: number;
   } | null;
+  weeklySpotlight?: Array<{ rank: number; username: string; bestScore: number; runs: number }>;
   daily: { gameId: string; endsAt: string; score: number | null; rank: number | null; completed: boolean; topScore: number | null; pointsToNext: number | null };
   games: DashboardGame[];
   nearbyPlayers: Array<{ rank: number; username: string; score: number; isYou: boolean }>;

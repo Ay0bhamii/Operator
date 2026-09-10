@@ -8,7 +8,7 @@ OPERATOR is a competitive skill platform where scores are not trusted—they are
 
 OPERATOR is a browser and Nimiq Pay skill platform. Each challenge is a fast test of memory, timing, sequence recognition, or precision. Players can practice locally as guests or connect a Nimiq wallet to enter ranked runs.
 
-The product promise is simple: **don�t just play. Prove it.**
+The product promise is simple: the first skill platform where your rank is cryptographically proven — not claimed. Don’t just play. Prove it. The product promise in detail: **don�t just play. Prove it.**
 
 ## Why Nimiq is essential
 
@@ -147,6 +147,22 @@ DATABASE_FILE=/tmp/arcade.sqlite
 ```
 
 The app prefers Postgres when `DATABASE_URL` is configured, but it also falls back to SQLite when it is not. This keeps Vercel and local demos working while a proper Postgres store is added. Set `Secure` cookies and use HTTPS for both the frontend and API, especially when the Mini App is hosted inside Nimiq Pay.
+
+## What changed for Cycle 2 judges
+
+- Verified Operator badge/title unlock only after wallet-signed ranked runs; profile and hero show competitive identity.
+- Every verified run returns a shareable Proof Card (`proofText` + `proofCode`) with copy support on the result screen.
+- Daily streaks now award bonus XP (3/7/14/30-day tiers), visible before and after Daily Operation runs.
+- Friend challenges support an optional off-chain honor stake label (`stakeLabel`); settlement stays social/community-side.
+- Operator of the Week spotlight ranks the last 7 days of verified runs; onboarding now reads Play as Guest → Beat the board → Connect wallet to claim rank.
+
+## Judge demo (45–60 seconds)
+
+1. Open Home: guest onboarding strip, Daily Operation countdown, and today’s featured game.
+2. Play as Guest, then Connect wallet and finish one ranked Daily Operation run.
+3. Show SUBMITTING REPLAY → VERIFIED RESULT, then Copy Proof from the Proof Card.
+4. Open Rankings/Profile: Verified badge/title, streak bonus, rating/XP, placement, and Operator of the Week.
+5. Replay the same run or alter events: the API consumes each run once, recomputes from events, and rejects invalid/reused submissions.
 
 ## Roadmap
 

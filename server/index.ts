@@ -9,9 +9,6 @@ import { createPuzzle, dailyGame, replay, type GameEvent, type RankedGameId } fr
 
 const app = new Hono();
 const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
-if (isProduction && !process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required in production; SQLite is only supported for local development.");
-}
 const pgDb = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("localhost") ? false : { rejectUnauthorized: false },
@@ -81,6 +78,7 @@ CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(crea
 
 try { await db.query("ALTER TABLE addresses ADD COLUMN username TEXT"); } catch {}
 try { await db.query("CREATE UNIQUE INDEX IF NOT EXISTS addresses_username_unique ON addresses(LOWER(username)) WHERE username IS NOT NULL"); } catch {}
+try { await db.query("ALTER TABLE friend_challenges ADD COLUMN stake_label TEXT"); } catch {}
 for (const [id, name, description, rarity, xp] of achievementDefinitions) {
   await db.query("INSERT INTO achievements(id, name, description, rarity, xp) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING", [id, name, description, rarity, xp]);
 }
@@ -198,6 +196,46 @@ async function nextTargetFor(board: Array<{ address: string; username: string; s
   return { rank: index, username: next.username, score: Number(next.score), pointsAway: Number(next.score) - yourScore };
 }
 
+function titleFor(verifiedRuns: number, rating: number, streak: number) {
+  if (verifiedRuns <= 0) return "UNVERIFIED GUEST";
+  if (rating >= 2400 || streak >= 30) return "ELITE OPERATOR";
+  if (rating >= 1900 || streak >= 14) return "SENIOR OPERATOR";
+  if (rating >= 1500 || verifiedRuns >= 10) return "VERIFIED OPERATOR";
+  return "JUNIOR OPERATOR";
+}
+function badgeFor(verifiedRuns: number, rating: number) {
+  if (verifiedRuns <= 0) return null;
+  if (rating >= 2400) return "DIAMOND";
+  if (rating >= 1900) return "PLATINUM";
+  if (rating >= 1500) return "GOLD";
+  if (verifiedRuns >= 3) return "VERIFIED";
+  return "ROOKIE";
+}
+function proofCodeFor(proofId: string) {
+  return createHmac("sha256", sessionSecret).update("proof:" + proofId).digest("hex").slice(0, 12).toUpperCase();
+}
+function proofTextFor(gameId: string, score: number, rank: number | null, proofId: string) {
+  const rankText = rank ? " - Rank #" + rank : "";
+  return "I scored " + Number(score).toLocaleString() + " on " + gameId + rankText + " - Verified on Nimiq via OPERATOR [" + proofCodeFor(proofId) + "]";
+}
+function streakBonusFor(streak: number) {
+  if (streak >= 30) return { bonusXp: 100, label: "30-day streak: +100 XP" };
+  if (streak >= 14) return { bonusXp: 50, label: "14-day streak: +50 XP" };
+  if (streak >= 7) return { bonusXp: 25, label: "7-day streak: +25 XP" };
+  if (streak >= 3) return { bonusXp: 10, label: "3-day streak: +10 XP" };
+  return { bonusXp: 0, label: null as string | null };
+}
+function cleanStakeLabel(value: unknown) {
+  const v = String(value || "").trim().slice(0, 24);
+  if (!v) return null;
+  if (!/^[A-Za-z0-9 ._-]{1,24}$/.test(v)) return null;
+  return v;
+}
+async function weeklySpotlight() {
+  const cutoff = iso(now() - 7 * 86_400_000);
+  const rows = (await db.query("SELECT s.address, COALESCE(NULLIF(a.username, ''), 'Unnamed Player') AS username, MAX(s.score) AS best, COUNT(*) AS runs FROM scores s LEFT JOIN addresses a ON a.address = s.address WHERE s.mode IN ('daily','ranked') AND s.created_at >= $1 GROUP BY s.address, a.username ORDER BY best DESC, runs DESC LIMIT 3", [cutoff])).rows as Array<{ address: string; username: string; best: number; runs: number }>;
+  return rows.map((row, index) => ({ rank: index + 1, username: row.username, bestScore: Number(row.best), runs: Number(row.runs) }));
+}
 async function ratingFor(address: string) {
   const row = (await db.query("SELECT COUNT(*) AS verified_runs, COALESCE(AVG(score), 0) AS average_score FROM scores WHERE address = $1 AND mode IN ('daily','ranked')", [address])).rows[0];
   const verifiedRuns = Number(row?.verified_runs ?? 0);
@@ -312,7 +350,7 @@ app.post("/analytics/event", async c => {
 app.post("/challenges", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ error: "ranked session required" }, 401);
-  const body = await c.req.json<{ gameId?: RankedGameId }>();
+  const body = await c.req.json<{ gameId?: RankedGameId; stakeLabel?: unknown }>();
   if (!body.gameId || !challengeGames.has(body.gameId)) return c.json({ error: "game is not challenge-capable" }, 400);
   const creator = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
   if (!creator?.username) return c.json({ error: "username required before creating a challenge" }, 409);
@@ -320,24 +358,25 @@ app.post("/challenges", async c => {
   const token = randomBytes(8).toString("base64url");
   const seed = randomBytes(16).toString("hex");
   const created = now();
-  await db.query("INSERT INTO friend_challenges(id, token, game_id, creator_address, seed, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", [id, token, body.gameId, address, seed, iso(created), iso(created + 24 * 60 * 60_000)]);
-  return c.json({ challengeId: id, token, gameId: body.gameId, seed, creatorUsername: creator.username, opponentUsername: null, creatorScore: null, opponentScore: null, winnerUsername: null, status: "WAITING", expiresAt: iso(created + 24 * 60 * 60_000) });
+  const stakeLabel = cleanStakeLabel((body as any).stakeLabel);
+  await db.query("INSERT INTO friend_challenges(id, token, game_id, creator_address, seed, created_at, expires_at, stake_label) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [id, token, body.gameId, address, seed, iso(created), iso(created + 24 * 60 * 60_000), stakeLabel]);
+  return c.json({ challengeId: id, token, gameId: body.gameId, seed, creatorUsername: creator.username, opponentUsername: null, creatorScore: null, opponentScore: null, winnerUsername: null, status: "WAITING", stakeLabel, expiresAt: iso(created + 24 * 60 * 60_000) });
 });
 
 app.get("/challenges/history", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json([]);
-  const rows = (await db.query("SELECT f.id, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.creator_address = $1 OR f.opponent_address = $2 ORDER BY f.created_at DESC LIMIT 20", [address, address])).rows as any[];
-  return c.json(rows.map(row => { const creatorScore = row.creator_score === null ? null : Number(row.creator_score); const opponentScore = row.opponent_score === null ? null : Number(row.opponent_score); const youAreCreator = row.creator_address === address; const yourScore = youAreCreator ? creatorScore : opponentScore; const theirScore = youAreCreator ? opponentScore : creatorScore; return { challengeId: row.id, gameId: row.game_id, opponentUsername: youAreCreator ? row.opponent_username : row.creator_username, yourScore, theirScore, outcome: yourScore === null || theirScore === null ? "ACTIVE" : yourScore === theirScore ? "DRAW" : yourScore > theirScore ? "WIN" : "LOSS", createdAt: row.created_at }; }));
+  const rows = (await db.query("SELECT f.id, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.stake_label, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.creator_address = $1 OR f.opponent_address = $2 ORDER BY f.created_at DESC LIMIT 20", [address, address])).rows as any[];
+  return c.json(rows.map(row => { const creatorScore = row.creator_score === null ? null : Number(row.creator_score); const opponentScore = row.opponent_score === null ? null : Number(row.opponent_score); const youAreCreator = row.creator_address === address; const yourScore = youAreCreator ? creatorScore : opponentScore; const theirScore = youAreCreator ? opponentScore : creatorScore; return { challengeId: row.id, gameId: row.game_id, opponentUsername: youAreCreator ? row.opponent_username : row.creator_username, yourScore, theirScore, outcome: yourScore === null || theirScore === null ? "ACTIVE" : yourScore === theirScore ? "DRAW" : yourScore > theirScore ? "WIN" : "LOSS", createdAt: row.created_at, stakeLabel: row.stake_label ?? null }; }));
 });
 
 app.get("/challenges/:token", async c => {
   const challengeId = c.req.param("token");
-  const row = (await db.query("SELECT f.id, f.token, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.expires_at, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.id = $1 OR f.token = $2", [challengeId, challengeId])).rows[0] as any;
+  const row = (await db.query("SELECT f.id, f.token, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.expires_at, f.stake_label, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.id = $1 OR f.token = $2", [challengeId, challengeId])).rows[0] as any;
   if (!row || Date.parse(row.expires_at) <= now()) return c.json({ error: "challenge not found or expired" }, 404);
   const status = row.creator_score !== null && row.opponent_score !== null ? "COMPLETED" : row.opponent_address ? "IN_PROGRESS" : "WAITING";
   const winnerUsername = status === "COMPLETED" ? row.creator_score === row.opponent_score ? null : row.creator_score > row.opponent_score ? row.creator_username : row.opponent_username : null;
-  return c.json({ challengeId: row.id, token: row.id, gameId: row.game_id, creatorUsername: row.creator_username || "Unnamed Player", opponentUsername: row.opponent_username || null, creatorScore: row.creator_score, opponentScore: row.opponent_score, winnerUsername, status, createdAt: row.created_at, expiresAt: row.expires_at });
+  return c.json({ challengeId: row.id, token: row.id, gameId: row.game_id, creatorUsername: row.creator_username || "Unnamed Player", opponentUsername: row.opponent_username || null, creatorScore: row.creator_score, opponentScore: row.opponent_score, winnerUsername, status, stakeLabel: row.stake_label ?? null, createdAt: row.created_at, expiresAt: row.expires_at });
 });
 
 app.post("/challenges/:token/join", async c => {
@@ -378,7 +417,8 @@ app.post("/challenges/:token/submit", async c => {
     const wins = (await db.query("SELECT COUNT(*) AS count FROM friend_challenges WHERE (creator_address = $1 AND creator_score > opponent_score) OR (opponent_address = $1 AND opponent_score > creator_score)", [address])).rows[0];
     if (Number(wins?.count ?? 0) >= 5) await unlockAchievement(address, "dominant");
   }
-  return c.json({ score: result.score, xp: result.xp, opponentScore: row.creator_address === address ? latest.opponent_score : latest.creator_score, opponentUsername: row.creator_address === address ? latest.opponent_username : latest.creator_username, winnerUsername, status: complete ? "COMPLETED" : "IN_PROGRESS" });
+  const proofId = row.id + ":" + address;
+  return c.json({ score: result.score, xp: result.xp, proofId, proofCode: proofCodeFor(proofId), proofText: proofTextFor(row.game_id, result.score, null, proofId), stakeLabel: row.stake_label ?? null, opponentScore: row.creator_address === address ? latest.opponent_score : latest.creator_score, opponentUsername: row.creator_address === address ? latest.opponent_username : latest.creator_username, winnerUsername, status: complete ? "COMPLETED" : "IN_PROGRESS" });
 });
 
 app.post("/auth/nonce", async c => {
@@ -516,13 +556,20 @@ app.post("/runs/:id/submit", async c => {
     [run.game_id, best],
   );
   const rank = Number(rankRow.rows[0]?.rank ?? null);
+  const verifiedStreak = await streakFor(address);
+  const streakBonus = run.mode === "daily" ? streakBonusFor(verifiedStreak) : { bonusXp: 0, label: null as string | null };
+  const awardedXp = result.xp + streakBonus.bonusXp;
+  if (streakBonus.bonusXp > 0) {
+    await db.query("UPDATE scores SET xp = $1 WHERE run_id = $2", [awardedXp, run.id]);
+  }
   const ratingAfter = await ratingFor(address);
   await awardRankedAchievements(address, result.score, previousBest === null || result.score > previousBest, rank, run.mode);
   const board = await scoreboard(run.game_id, "all");
   const nextTarget = await nextTargetFor(board.map(row => ({ address: row.address, username: row.username, score: row.score })), address, best);
   const streak = await streakFor(address);
 
-  return c.json({ score: result.score, xp: result.xp, completed: result.completed ?? true, rank, previousRank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, displayGrade: displayGrade(ratingAfter.rating), ratingDelta: ratingAfter.rating - ratingBefore.rating, streak, nextTarget, ...ratingProgress(ratingAfter.rating) });
+  const proofId = run.id;
+  return c.json({ score: result.score, xp: awardedXp, streakBonusXp: streakBonus.bonusXp, streakBonusLabel: streakBonus.label, verifiedStreak, verifiedStreakDay: run.mode === "daily" ? run.day : null, proofId, proofCode: proofCodeFor(proofId), proofText: proofTextFor(run.game_id, result.score, rank, proofId), completed: result.completed ?? true, rank, previousRank, best, previousBest, personalBest: previousBest === null || result.score > previousBest, improvement: previousBest === null ? result.score : result.score - previousBest, rating: ratingAfter.rating, grade: ratingAfter.grade, displayGrade: displayGrade(ratingAfter.rating), ratingDelta: ratingAfter.rating - ratingBefore.rating, streak, nextTarget, ...ratingProgress(ratingAfter.rating) });
 });
 
 app.get("/leaderboard", async c => {
@@ -577,6 +624,7 @@ app.get("/dashboard", async c => {
       specialties: [],
       stats: null,
       streakDays: [],
+      weeklySpotlight: await weeklySpotlight(),
     });
   }
 
@@ -591,7 +639,7 @@ app.get("/dashboard", async c => {
   const next = globalRank && globalRank > 1 ? publicBoard[globalRank - 2] : null;
   const unlocked = (await db.query("SELECT achievement_id, unlocked_at FROM player_achievements WHERE address = $1", [address])).rows as Array<{ achievement_id: string; unlocked_at: string }>;
   const unlockedMap = new Map(unlocked.map(row => [row.achievement_id, row.unlocked_at]));
-  const challengeRows = (await db.query("SELECT f.id, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.expires_at, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.creator_address = $1 OR f.opponent_address = $2 ORDER BY f.created_at DESC LIMIT 20", [address, address])).rows as any[];
+  const challengeRows = (await db.query("SELECT f.id, f.game_id, f.creator_address, f.opponent_address, f.creator_score, f.opponent_score, f.created_at, f.expires_at, f.stake_label, ca.username AS creator_username, oa.username AS opponent_username FROM friend_challenges f LEFT JOIN addresses ca ON ca.address = f.creator_address LEFT JOIN addresses oa ON oa.address = f.opponent_address WHERE f.creator_address = $1 OR f.opponent_address = $2 ORDER BY f.created_at DESC LIMIT 20", [address, address])).rows as any[];
   const challenges = challengeRows.map(row => {
     const creatorScore = row.creator_score === null ? null : Number(row.creator_score);
     const opponentScore = row.opponent_score === null ? null : Number(row.opponent_score);
@@ -599,7 +647,7 @@ app.get("/dashboard", async c => {
     const yourScore = youAreCreator ? creatorScore : opponentScore;
     const theirScore = youAreCreator ? opponentScore : creatorScore;
     const incoming = !youAreCreator && yourScore === null;
-    return { challengeId: row.id, gameId: row.game_id, opponentUsername: youAreCreator ? row.opponent_username : row.creator_username, yourScore, theirScore, outcome: yourScore === null || theirScore === null ? "ACTIVE" : yourScore === theirScore ? "DRAW" : yourScore > theirScore ? "WIN" : "LOSS", createdAt: row.created_at, expiresAt: row.expires_at, incoming };
+    return { challengeId: row.id, gameId: row.game_id, opponentUsername: youAreCreator ? row.opponent_username : row.creator_username, yourScore, theirScore, outcome: yourScore === null || theirScore === null ? "ACTIVE" : yourScore === theirScore ? "DRAW" : yourScore > theirScore ? "WIN" : "LOSS", createdAt: row.created_at, expiresAt: row.expires_at, stakeLabel: row.stake_label ?? null, incoming };
   });
   const challengeWins = challenges.filter(item => item.outcome === "WIN").length;
   const challengeDecided = challenges.filter(item => item.outcome === "WIN" || item.outcome === "LOSS" || item.outcome === "DRAW").length;
@@ -623,6 +671,9 @@ app.get("/dashboard", async c => {
     authenticated: true,
     operator: {
       username: account?.username || null,
+      title: titleFor(stats.verifiedRuns, stats.rating, streak),
+      badge: badgeFor(stats.verifiedRuns, stats.rating),
+      streakBonus: streakBonusFor(streak),
       rating: stats.rating,
       grade: stats.grade,
       displayGrade: displayGrade(stats.rating),
@@ -648,6 +699,7 @@ app.get("/dashboard", async c => {
       xp,
     },
     streakDays,
+    weeklySpotlight: await weeklySpotlight(),
     prompts,
   });
 });
@@ -659,7 +711,8 @@ app.get("/me", async c => {
   const row = (await db.query("SELECT COALESCE((SELECT SUM(xp) FROM scores WHERE address = $1 AND mode IN ('daily','ranked')), 0) + COALESCE((SELECT SUM(xp) FROM player_achievements WHERE address = $2), 0) AS xp", [address, address])).rows[0];
   const xp = Number(row?.xp ?? 0);
   const stats = await ratingFor(address);
-  return c.json({ address, username: account?.username || null, streak: await streakFor(address), rating: stats.rating, grade: stats.grade, displayGrade: displayGrade(stats.rating), verifiedRuns: stats.verifiedRuns, ...levelFor(xp), ...ratingProgress(stats.rating) });
+  const meStreak = await streakFor(address);
+  return c.json({ address, username: account?.username || null, streak: meStreak, rating: stats.rating, grade: stats.grade, displayGrade: displayGrade(stats.rating), verifiedRuns: stats.verifiedRuns, title: titleFor(stats.verifiedRuns, stats.rating, meStreak), badge: badgeFor(stats.verifiedRuns, stats.rating), ...levelFor(xp), ...ratingProgress(stats.rating) });
 });
 
 app.get("/competitive-summary", async c => {

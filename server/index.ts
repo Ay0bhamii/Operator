@@ -35,9 +35,9 @@ const db = {
 };
 const sessionSecret = process.env.SESSION_SECRET || "development-only-change-me";
 const dailySecret = process.env.DAILY_SECRET || "development-daily-secret";
-const rankedGames = new Set<RankedGameId>(["block-rush", "nim-pin", "memory", "vault", "sync"]);
-const challengeGames = new Set<RankedGameId>(["nim-pin", "memory", "vault"]);
-const gameLimits: Record<string, number> = { "block-rush": 30000, "nim-pin": 12000, memory: 12000, vault: 10000, sync: 30000 };
+const rankedGames = new Set<RankedGameId>(["reaction", "color", "whack", "flight", "pop", "memory", "stack"]);
+const challengeGames = new Set<RankedGameId>(["reaction", "whack", "stack"]);
+const gameLimits: Record<string, number> = { reaction: 30000, color: 30000, whack: 30000, flight: 60000, pop: 30000, memory: 60000, stack: 60000 };
 const achievementDefinitions = [
   ["first-blood", "FIRST BLOOD", "Complete your first verified ranked run.", "COMMON", 25],
   ["no-signal", "NO SIGNAL", "Score 1,000 or more in one game.", "COMMON", 25],
@@ -718,7 +718,7 @@ app.get("/me", async c => {
 app.get("/competitive-summary", async c => {
   const address = await sessionAddress(c);
   if (!address) return c.json({ authenticated: false, globalRank: null, nextTarget: null, personalBest: null, daily: null, streak: 0 });
-  const game = c.req.query("game") || "nim-pin";
+  const game = c.req.query("game") || "reaction";
   if (!rankedGames.has(game as RankedGameId)) return c.json({ error: "game is not ranked-capable" }, 400);
   const account = (await db.query("SELECT username FROM addresses WHERE address = $1", [address])).rows[0] as { username?: string | null } | undefined;
   const xpRow = (await db.query("SELECT COALESCE((SELECT SUM(xp) FROM scores WHERE address = $1 AND mode IN ('daily','ranked')), 0) + COALESCE((SELECT SUM(xp) FROM player_achievements WHERE address = $2), 0) AS xp", [address, address])).rows[0];

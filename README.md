@@ -21,7 +21,7 @@ Players can:
 - Compete on daily challenges and leaderboards
 - Challenge friends with the same seeded puzzle
 
-Five verified competitive games power the daily rotation: **Block Rush**, **NIM PIN**, **Address Memory**, **NIM Vault**, and **Sync** — deterministic seeded puzzles with server replay validators.
+Seven verified competitive games power the daily rotation: **NIM Reaction**, **NIM Color**, **NIM Whack**, **NIM Flight**, **NIM Pop**, **NIM Memory**, and **NIM Stack** — deterministic seeded puzzles with server replay validators.
 
 ---
 

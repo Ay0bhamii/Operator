@@ -42,3 +42,34 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
 .leaderboard-section{grid-template-columns:.8fr 1.2fr;border-top-color:rgba(148,116,255,.18)}.rank-highlight,.leaderboard-table,.retention-panel,.profile-card{border-color:rgba(148,116,255,.27)!important;background:linear-gradient(145deg,rgba(24,18,57,.86),rgba(8,14,34,.9))}.rank-pill{color:#7ce2ff}.challenge-player,.copy-btn{border-color:rgba(124,226,255,.5);background:rgba(107,83,255,.2);color:#e8faff}.rank-row{border-bottom-color:rgba(148,116,255,.17)}.rank-row>span:first-child,.your-rank b{color:#ffe34d}.your-rank{background:rgba(61,35,134,.28);border-color:rgba(148,116,255,.3)}.friend-card{border-color:rgba(148,116,255,.35);background:linear-gradient(135deg,rgba(47,26,106,.82),rgba(10,18,43,.95));border-radius:24px}.profile-card{border-radius:24px}.xp-line i{background:linear-gradient(90deg,#6ee5ff,#9d78ff)}.achievement-unlocked .achievement-mark{border-color:#7ce2ff;color:#7ce2ff;box-shadow:0 0 16px rgba(124,226,255,.25)}
 .mobile-nav{border-top-color:rgba(148,116,255,.4)!important;background:rgba(11,8,29,.96)!important}.mobile-nav button.active{color:#ffe34d!important}.mobile-nav button{color:#aaa5c9!important}
 @media(max-width:1000px){.game-list{grid-template-columns:repeat(3,minmax(0,1fr))}.editorial-game{min-height:190px}}@media(max-width:650px){.operator-nav{height:70px}.operator-hero{grid-template-columns:1fr;min-height:auto}.operator-hero .hero-copy{padding:48px 0 30px}.operator-hero h1{font-size:53px}.operator-console{margin-bottom:28px}.console-art{height:70px}.console-art svg{width:42px}.season-strip{margin-top:16px}.game-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.editorial-game{min-height:178px;padding:15px!important}.editorial-game b{font-size:15px}.editorial-game div small{font-size:10px}.leaderboard-section{grid-template-columns:1fr}.daily-card{padding:28px 22px}.operator-status{border-radius:0 0 14px 14px}}
+
+/* ---- NIM skill series: reaction / color / whack / flight / pop / memory / stack ---- */
+.reaction-pad{width:min(400px,78vw);aspect-ratio:1/1;margin:0 auto;border-radius:32px;border:1px solid rgba(255,216,77,.22);background:radial-gradient(circle at 50% 38%,rgba(75,163,255,.12),#0b0e15 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#7c86a0;cursor:pointer;user-select:none;transition:box-shadow .15s ease,color .15s ease}
+.reaction-pad b{font-size:30px;letter-spacing:.12em}
+.reaction-pad.live{color:#ffd84d;border-color:rgba(232,67,60,.7);box-shadow:0 0 0 3px rgba(232,67,60,.35),0 0 46px rgba(232,67,60,.28)}
+.stroop-card{margin:8px auto;min-height:120px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:#0d1017}
+.stroop-card span{font-size:64px;font-weight:800;letter-spacing:.08em}
+.stroop-choices{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.stroop-btn{padding:16px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#12151d;color:#c9cfdd;font-weight:700;letter-spacing:.1em;font-size:15px;cursor:pointer}
+.stroop-btn:hover{border-color:#ffd84d;color:#ffd84d}
+.stroop-timer{height:6px;border-radius:3px;background:#1b1f2a;overflow:hidden}
+.stroop-timer i{display:block;height:100%;background:linear-gradient(90deg,#4ba3ff,#ffd84d)}
+.whack-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:460px;margin:14px auto}
+.whack-hole{aspect-ratio:1/1;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:radial-gradient(circle at 50% 45%,#171b26,#0b0e15 75%);color:#4ba3ff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.whack-hole.mole{border-color:#ffd84d;box-shadow:0 0 24px rgba(255,216,77,.35);color:#ffd84d;background:radial-gradient(circle at 50% 45%,rgba(255,216,77,.2),#0b0e15 75%)}
+.flight-stage{position:relative;height:400px;max-width:640px;margin:10px auto;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:linear-gradient(180deg,#0b1220 0%,#0b0e15 100%);overflow:hidden;cursor:pointer}
+.flight-pipe{position:absolute;width:56px;background:linear-gradient(180deg,#1d2b45,#101a2e);border:1px solid rgba(75,163,255,.4);border-radius:8px}
+.flight-pipe.bottom{background:linear-gradient(0deg,#1d2b45,#101a2e)}
+.flight-bird{position:absolute;left:64px;width:34px;height:34px;margin-top:-17px;border-radius:50% 50% 50% 0;background:linear-gradient(135deg,#ffd84d,#e8963c);display:flex;align-items:center;justify-content:center;color:#7a3c00;transform:rotate(-45deg)}
+.flight-ground{position:absolute;left:0;right:0;bottom:0;height:26px;background:#141a26;border-top:1px solid rgba(255,216,77,.3)}
+.pop-stage{display:flex;gap:10px;justify-content:center;align-items:flex-end;height:360px;max-width:640px;margin:10px auto;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:radial-gradient(circle at 50% 100%,rgba(75,163,255,.1),#0b0e15 70%);padding:14px}
+.pop-lane{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px;height:100%}
+.pop-balloon{width:56px;height:68px;border-radius:50% 50% 48% 48%;background:radial-gradient(circle at 35% 30%,#7ee08a,#2f9e57 70%);border:1px solid rgba(255,255,255,.25);cursor:pointer}
+.pop-lane .pop-balloon:nth-child(2){background:radial-gradient(circle at 35% 30%,#ffd84d,#d99a1b 70%)}
+.pop-lane .pop-balloon:nth-child(3){background:radial-gradient(circle at 35% 30%,#7db4ff,#2f6fd0 70%)}
+.memory-tiles{display:grid;grid-template-columns:repeat(2,minmax(120px,160px));gap:14px;justify-content:center;margin:18px 0}
+.memory-tile{aspect-ratio:1.6/1;border-radius:16px;border:2px solid rgba(255,255,255,.12);cursor:pointer;opacity:.42;transition:opacity .1s ease,transform .1s ease}
+.memory-tile.lit{opacity:1;transform:scale(1.04);border-color:#fff;box-shadow:0 0 30px rgba(255,255,255,.25)}
+.stack-stage{position:relative;height:320px;max-width:680px;margin:10px auto;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:linear-gradient(180deg,#0b1220,#0b0e15);overflow:hidden;cursor:pointer}
+.stack-block{position:absolute;height:22px;border-radius:6px;background:linear-gradient(90deg,#4ba3ff,#7ee0ff);box-shadow:0 2px 10px rgba(75,163,255,.35)}
+.stack-moving{background:linear-gradient(90deg,#ffd84d,#e8963c);box-shadow:0 2px 14px rgba(255,216,77,.45)}

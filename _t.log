@@ -1,0 +1,22 @@
+
+> operator-nimiq@0.1.0 test
+> tsx --test packages/game-core/index.test.ts
+
+✔ same seed creates the same puzzle (6.7185ms)
+✔ daily rotation always selects a ranked challenge (0.7089ms)
+✔ reaction: valid click scores, false start rejected, silence incomplete (1.9163ms)
+✔ color: correct streak completes, wrong ink stops the run (1.2426ms)
+✔ whack: windowed hits score and wild swings are penalised (1.5428ms)
+✔ pop: every scheduled balloon can be popped exactly once (1.0524ms)
+✔ memory: full sequence completes, wrong tile keeps partial progress (1.08ms)
+✔ flight: taps replay into pipes passed and wild inputs are rejected (1.6448ms)
+✔ stack: perfectly timed drops build a complete verified tower (1.271ms)
+✔ replay rejects malformed event timelines (0.9209ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 666.9746

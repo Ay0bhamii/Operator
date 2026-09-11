@@ -373,7 +373,7 @@ function App() {
     <section className="hero-editorial operations-hero operator-hero"><div className="hero-copy"><div className="kicker"><span/>FEATURED GAME · VERIFIED SKILL RUN</div><div className="hero-badge"><Sparkles size={14}/> PLAY. COMPETE. EARN.</div><h1>{dashboardDaily?.completed ? "MISSION\nCOMPLETE" : "LEVEL UP\nYOUR"}<br/><em>{dailyGame?.name.toUpperCase() ?? "NIM REACTION"}</em></h1><p>{dashboardDaily?.completed ? "Your score is on the board. Improve it only if the daily rules permit another attempt." : wallet ? "Your daily skill test is ready. Make the run count." : "Connect your Nimiq wallet to start a verified run and claim your place on the board."}</p><div className="onboarding-strip"><span>1 CONNECT WALLET</span><span>2 SET A VERIFIED SCORE</span><span>3 CLAIM YOUR RANK</span></div><div className="hero-actions"><button className="gold-btn" disabled={!dailyOperation} onClick={()=>dailyOperation && (wallet ? requestRankedGame(dailyOperation.gameId as GameId,"daily") : requestRankedGame(dailyOperation.gameId as GameId,"daily"))}><Play size={15} fill="currentColor"/> {dashboardDaily?.completed ? "PLAY AGAIN" : "PLAY NOW"}</button></div></div><div className="operation-console operator-console"><div className="console-art"><Gamepad size={62}/><span>DAILY DROP</span></div><span>ENDS IN</span><b>{formatCountdown(dailyRemaining)}</b><div><small>YOUR BEST</small><strong>{dashboardDaily?.score?.toLocaleString() || "—"}</strong></div><div><small>DAILY RANK</small><strong>{dashboardDaily?.rank ? `#${dashboardDaily.rank}` : "—"}</strong></div></div></section>
     <section className="season-strip"><div><small>SEASON</small><b>01</b></div><div><small>OPERATORS</small><b>-</b></div><div><small>RANKED RUNS</small><b>-</b></div><div><small>STATUS</small><b className="live">LIVE / ONLINE</b></div></section>
     <section id="feature" className="feature-section"><div className="section-label">01 <span>TODAY'S OPERATION</span></div><div className="feature-card daily-card"><div className="daily-content"><small>ONE VERIFIED ATTEMPT</small><h2>{dailyGame?.name.toUpperCase() ?? "NIM REACTION"}</h2><div className="daily-countdown">ENDS IN / {formatCountdown(dailyRemaining)}</div><div className="daily-meta"><span>YOUR SCORE: {competitiveSummary?.daily?.score?.toLocaleString() || "-"}</span><span>DAILY RANK: {competitiveSummary?.daily?.rank ? `#${competitiveSummary.daily.rank}` : "-"}</span><span>TOP SCORE: {competitiveSummary?.daily?.topScore?.toLocaleString() || "-"}</span><span>STREAK BONUS: {operator?.streakBonus?.bonusXp ? `+${operator.streakBonus.bonusXp} XP` : "WIN 3 DAILY STREAKS"}</span></div><p className="daily-target">{competitiveSummary?.daily?.pointsToNext ? `Beat the next player by ${competitiveSummary.daily.pointsToNext} points.` : "Complete today's operation to enter the daily board."}</p><button className="gold-btn compact" onClick={()=>{triggerFeedback("tap"); dailyOperation && (wallet ? requestRankedGame(dailyOperation.gameId as GameId,"daily") : requestRankedGame(dailyOperation.gameId as GameId,"daily"));}}>{wallet ? "PLAY TODAY'S OPERATION" : "SIGN IN TO PLAY"}</button></div></div></section>
-    <section id="ranked" className="lab-section"><div className="section-heading"><div><span>02</span><h2>POPULAR GAMES</h2></div><p>{wallet ? "WALLET VERIFIED" : "SIGN IN TO COMPETE"}<br/>{wallet ? "RESULTS COUNT" : "RESULTS STAY LOCKED"}</p></div><div className="game-list">{games.filter(g=>rankedGames.includes(g.id)).map((g,i)=>{const Icon=g.icon;return <button className={`editorial-game ${wallet ? "" : "ranked-locked"}`} key={g.id} onClick={()=>{triggerFeedback("tap"); requestRankedGame(g.id)}}><span>0{i+1}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><small>{wallet ? "RANKED" : "SIGN IN TO PLAY"}</small><strong>-&gt;</strong></button>})}</div></section>
+    <section id="ranked" className="lab-section"><div className="section-heading"><div><span>02</span><h2>POPULAR GAMES</h2></div><p>{wallet ? "WALLET VERIFIED" : "SIGN IN TO COMPETE"}<br/>{wallet ? "RESULTS COUNT" : "RESULTS STAY LOCKED"}</p></div><div className="game-list">{games.filter(g=>rankedGames.includes(g.id)).map((g,i)=>{const Icon=g.icon;const stat=dashboardGames.find(d=>d.gameId===g.id);return <button className={`editorial-game ${wallet ? "" : "ranked-locked"}${dailyGame?.id===g.id?" daily-flag-on":""}`} key={g.id} onClick={()=>{triggerFeedback("tap"); requestRankedGame(g.id)}}>{dailyGame?.id===g.id?<em className="daily-chip">DAILY DROP</em>:null}<span>0{i+1}</span><Icon size={20}/><div><b>{g.name}</b><small>{g.subtitle}</small></div><div className="card-stats">{stat?.best?<b>BEST {stat.best.toLocaleString()}</b>:<b className="dim">NO VERIFIED RUN</b>}{stat?.rank?<span>RANK #{stat.rank}</span>:<span className="dim">—</span>}</div><small>{wallet ? "RANKED" : "SIGN IN TO PLAY"}</small><strong>-&gt;</strong></button>})}</div></section>
     <section id="leaderboard" className="leaderboard-section"><div className="section-heading"><div><span>03</span><h2>RANKINGS</h2></div><p>GLOBAL<br/>VERIFIED</p></div><div className="leaderboard-table"><div className="rank-highlight"><div className="rank-pill">{globalRank ? getGlobalRankText(globalRank, pointsAway ?? 0) : "CONNECT TO SEE YOUR RANK"}</div><div className="rank-gap">{competitiveSummary?.nextTarget ? `${competitiveSummary.nextTarget.pointsAway} points to pass @${competitiveSummary.nextTarget.username}` : "Complete a verified run to set your rank."}</div><button className="challenge-player" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>CHALLENGE PLAYER</button></div>{leaderboard.length ? leaderboard.map((row,index)=><div className="rank-row" key={`${row.username}-${index}`}><span>{String(index+1).padStart(2,"0")}</span><span>{row.username}</span><b>{row.score.toLocaleString()}</b><i>-&gt;</i></div>) : <div className="leaderboard-empty"><b>{wallet ? "NO VERIFIED SCORES YET" : "CONNECT TO RANK"}</b><span>{wallet ? "Complete a ranked challenge to appear here." : "Guest scores stay on this device and never enter the board."}</span></div>}<div className="your-rank"><span>YOUR BEST</span><b>{wallet ? (competitiveSummary?.personalBest?.score || verifiedBest || scores[leaderboardGame] || "-") : "GUEST"}</b><strong>{wallet ? "VERIFIED OPERATOR" : "VERIFICATION REQUIRED"}</strong></div></div></section>
     <section className="friend-section"><div className="section-label">04 <span>CHALLENGE A FRIEND</span></div><div className="friend-card"><div className="friend-copy"><div className="stake-row"><label>HONOR STAKE (OPTIONAL, OFF-CHAIN)</label><input value={stakeInput} onChange={event => setStakeInput(event.target.value)} placeholder="e.g. Winner picks dinner" maxLength={24}/></div><h3>Same puzzle.</h3><h3>Same seed.</h3><h3>One winner.</h3><p>{challengeMessage || (challenge ? challenge.status === "WAITING" ? "Waiting for opponent..." : `${challenge.opponentUsername || "Opponent"} joined. Beat their score.` : "Compete asynchronously with a friend.")}</p></div><div className="friend-actions">{!challenge && <button className="copy-btn" onClick={()=>void createFriendChallenge()}>CREATE CHALLENGE</button>}{challenge && <><small>CHALLENGE CREATED</small><input className="challenge-link" value={challengeLink} readOnly/><button className="copy-btn" onClick={()=>{triggerFeedback("tap"); void copyChallenge();}}>{challengeCopied ? "CHALLENGE COPIED" : "COPY CHALLENGE"}</button></>}</div></div></section>
     <section id="profile" className="profile-section"><div className="profile-card"><div className="profile-head"><div><span>05</span><small>OPERATOR PROFILE</small></div><div>LVL <b>{level}</b></div></div><div className="profile-main"><div><small>OPERATOR RATING</small><div className="big-xp">{(competitiveSummary?.rating ?? profile?.rating)?.toLocaleString()||"-"}</div><div className="xp-line"><i style={{width:`${competitiveSummary?.progressPercent ?? (profile ? Math.min(100,profile.rating/30) : 0)}%`}}/></div><small>{competitiveSummary?.grade || (profile ? `${profile.grade}` : "CONNECT WALLET TO BUILD RATING")}</small>{competitiveSummary?.nextGrade && <p className="rating-target">{competitiveSummary.ratingToNext} RATING TO {competitiveSummary.nextGrade}</p>}</div><div className="profile-stats"><div><small>USERNAME</small><b>{profile?.username || "UNNAMED PLAYER"}</b>{wallet && <button className="profile-edit" onClick={()=>{setUsernameInput(profile?.username || "");setUsernameError(null);setUsernamePrompt(true)}}>EDIT</button>}</div><div><small>CURRENT XP</small><b>{displayXp.toLocaleString()}</b></div><div><small>STREAK</small><b>{competitiveSummary?.streak || profile?.streak ? `${competitiveSummary?.streak || profile?.streak} DAYS` : "-"}</b></div></div></div></div></section>
@@ -442,10 +442,12 @@ function RankedResult({submission,preview,onRestart}:{submission:RankedSubmissio
 
 type GameProps = { seed?: string; startedAt: number; rankedSubmission: RankedSubmission; onEvent: (event: Omit<GameEvent, "t">) => void; onFinish: (r: Result) => void };
 
+/* ---- NIM REACTION ------------------------------------------------------- */
 function Reaction({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [puzzle]=useState(()=> seed ? createPuzzle("reaction", seed) : null);
   const [delay]=useState(()=> puzzle && puzzle.gameId === "reaction" ? puzzle.delay : 1100 + rand(1400));
   const [phase,setPhase]=useState<"wait"|"live">("wait");
+  const [jolt,setJolt]=useState(0);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const base = startedAt || performance.now();
   useEffect(()=>{
@@ -453,18 +455,23 @@ function Reaction({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) 
     const id = window.setTimeout(()=>setPhase("live"), Math.max(0, base + delay - performance.now()));
     return ()=>window.clearTimeout(id);
   },[phase,delay,base]);
+  const fill = Math.max(0, Math.min(1, (performance.now() - base) / delay));
   function hit(){
     if(outcome) return;
+    if(phase==="wait"){
+      setJolt(j=>j+1);
+      return;
+    }
     const t = Math.round(performance.now()-base);
     onEvent({type:"choice",value:"go"});
-    const preview = t < delay ? {score:0,xp:0} : {score:Math.max(10,Math.min(1000,1000-(t-delay))),xp:160};
-    setOutcome(preview);
-    onFinish({...preview,time:t});
+    const score = Math.max(10, Math.min(1000, 1000-(t-delay)));
+    setOutcome({score,xp:160});
+    onFinish({score,xp:160,time:t});
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge narrow"><GameHUD label="NIM REACTION" value={phase==="live"?"TAP NOW":"WAIT..."} timer="one shot"/><button className={`reaction-pad ${phase}`} onClick={hit}><Gauge size={44}/><b>{phase==="live"?"TAP":"WAIT FOR IT"}</b><small>{phase==="live"?"":"target arms shortly"}</small></button><p className="hint">One click the instant the node lights up. A false start voids the run.</p></div>;
+  return <div className="challenge narrow"><GameHUD label="NIM REACTION" value={phase==="live"?"TAP NOW":"GET READY..."} timer="one shot"/><button key={jolt} className={`reaction-pad ${phase}${jolt?" jolted":""}`} onClick={hit}><Gauge size={44}/><b>{phase==="live"?"TAP":"WAIT FOR IT"}</b><small>{phase==="live"?"node is live":"arming pad…"}</small><i className="reaction-fill" style={{width:`${(phase==="live"?100:fill*100).toFixed(1)}%`}}/></button><p className="hint">{jolt&&phase==="wait"?"Too early — the pad re-arms. Wait for the node.":"One click the instant the node lights up. False starts re-arm the pad."}</p></div>;
 }
-
+/* ---- NIM COLOR ----------------------------------------------------------- */
 function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [data]=useState(()=>{
     const puzzle = seed ? createPuzzle("color", seed) : null;
@@ -473,34 +480,45 @@ function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   });
   const [round,setRound]=useState(0);
   const [correct,setCorrect]=useState(0);
+  const [flash,setFlash]=useState<{kind:"hit"|"miss";index:number}|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const [deadline,setDeadline]=useState(()=>performance.now()+data.limits[0]+400);
+  const pendingRef=useRef(false);
   const [,setTick]=useState(0);
   const done = outcome !== null;
   useEffect(()=>{ if(done) return; const id=setInterval(()=>setTick(x=>x+1),80); return ()=>clearInterval(id); },[done]);
-  useEffect(()=>{ if(done) return; if(performance.now()>deadline) stop(); });
+  useEffect(()=>{ if(done || pendingRef.current) return; if(performance.now()>deadline) stop(); });
   function stop(){
-    if(outcome) return;
+    if(outcome || pendingRef.current) return;
+    pendingRef.current=true;
     const preview={score:correct*100,xp:120};
     setOutcome(preview);
     onFinish(preview);
   }
   function pick(index:number){
-    if(outcome||round>=data.rounds.length) return;
+    if(outcome||pendingRef.current||round>=data.rounds.length) return;
     onEvent({type:"choice",value:String(index)});
     if(index===data.rounds[round].ink){
       const next=correct+1;
       setCorrect(next);
+      setFlash({kind:"hit",index});
+      pendingRef.current=true;
+      window.setTimeout(()=>{ pendingRef.current=false; setFlash(null); },150);
       if(round+1>=data.rounds.length){ const preview={score:next*100+200,xp:160}; setOutcome(preview); onFinish(preview); }
       else { setRound(round+1); setDeadline(performance.now()+data.limits[round+1]+400); }
-    } else stop();
+    } else {
+      setFlash({kind:"miss",index});
+      pendingRef.current=true;
+      window.setTimeout(()=>{ pendingRef.current=false; stop(); },280);
+    }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
   const current=data.rounds[Math.min(round,data.rounds.length-1)];
   const left=Math.max(0,deadline-performance.now());
   const limit=data.limits[Math.min(round,data.limits.length-1)] ?? 1200;
-  return <div className="challenge narrow"><GameHUD label="NIM COLOR" value={`ROUND ${round+1}/${data.rounds.length}`} timer={`${(left/1000).toFixed(1)}s`}/><div className="stroop-card"><span style={{color:COLORS[current.ink]}}>{COLOR_NAMES[current.word]}</span></div><div className="stroop-choices">{COLOR_NAMES.map((name,index)=><button key={name} className="stroop-btn" onClick={()=>pick(index)}>{name}</button>)}</div><div className="stroop-timer"><i style={{width:`${Math.min(100,left/limit*100)}%`}}/></div><p className="hint">Tap the color the word is painted in - never the word itself.</p></div>;
+  return <div className="challenge narrow"><GameHUD label="NIM COLOR" value={`ROUND ${round+1}/${data.rounds.length} · ${correct} STREAK`} timer={`${(left/1000).toFixed(1)}s`}/><div className="color-pips">{Array.from({length:data.rounds.length},(_,p)=><i key={p} className={p<correct?"on":""}/>)}</div><div className="stroop-card"><span style={{color:COLORS[current.ink]}}>{COLOR_NAMES[current.word]}</span></div><div className="stroop-choices">{COLOR_NAMES.map((name,index)=>{const cls=flash&&index===flash.index?(flash.kind==="hit"?" cf-hit":" cf-miss"):"";return <button key={name} className={`stroop-btn${cls}`} onClick={()=>pick(index)}>{name}</button>;})}</div><div className="stroop-timer"><i style={{width:`${Math.min(100,left/limit*100)}%`}}/></div><p className="hint">{flash?.kind==="miss"?"Wrong ink — streak over.":`Tap the ink color, not the word. ${correct} perfect so far.`}</p></div>;
 }
+/* ---- NIM WHACK ----------------------------------------------------------- */
 function Whack({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [targets]=useState(()=>{
     const puzzle = seed ? createPuzzle("whack", seed) : null;
@@ -512,6 +530,8 @@ function Whack({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [hits,setHits]=useState(0);
   const [misses,setMisses]=useState(0);
   const [cursor,setCursor]=useState(0);
+  const [burst,setBurst]=useState<number|null>(null);
+  const [flash,setFlash]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
   const done=outcome!==null;
@@ -519,16 +539,19 @@ function Whack({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const elapsed=performance.now()-base;
   useEffect(()=>{ if(done||finishedRef.current) return; if(elapsed>=10000){ finishedRef.current=true; const preview={score:Math.max(0,hits*100-misses*40),xp:hits>=10?160:120}; setOutcome(preview); onFinish(preview); } });
   useEffect(()=>{ if(!done && cursor<targets.length && elapsed>targets[cursor].to+120){ setCursor(cursor+1); } });
+  useEffect(()=>{ if(burst!==null) window.setTimeout(()=>setBurst(null),190); else if(flash!==null) window.setTimeout(()=>setFlash(null),190); });
   const visible = cursor < targets.length && elapsed >= targets[cursor].from && elapsed <= targets[cursor].to + 120 ? targets[cursor] : null;
   function swing(slot:number){
     if(done||finishedRef.current) return;
     onEvent({type:"choice",value:String(slot)});
-    if(visible && slot===visible.slot){ setHits(h=>h+1); setCursor(c=>c+1); } else setMisses(m=>m+1);
+    if(visible && slot===visible.slot){ setHits(h=>h+1); setBurst(slot); setCursor(c=>c+1); }
+    else { setMisses(m=>m+1); setFlash(slot); }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge"><GameHUD label="NIM WHACK" value={`${hits} HITS`} timer={`${Math.max(0,(10000-elapsed)/1000).toFixed(1)}s`}/><div className="whack-grid">{Array.from({length:9},(_,slot)=>{ const mole=visible&&visible.slot===slot; return <button key={slot} className={`whack-hole${mole?" mole":""}`} onClick={()=>swing(slot)}>{mole?<Crosshair/>:""}</button>; })}</div><p className="hint">Hit the marked pad. Empty swings cost points.</p></div>;
+  const accuracy = hits+misses>0 ? Math.round(hits/(hits+misses)*100) : 100;
+  return <div className="challenge"><GameHUD label="NIM WHACK" value={`${hits} HITS`} timer={`${Math.max(0,(10000-elapsed)/1000).toFixed(1)}s · ${accuracy}% ACC`}/><div className="whack-grid">{Array.from({length:9},(_,slot)=>{ const mole=visible&&visible.slot===slot; return <button key={slot} className={`whack-hole${mole?" mole":""}${burst===slot?" burst":""}${burst===null&&flash===slot?" miss-flash":""}`} onClick={()=>swing(slot)}>{mole?<Crosshair/>:""}</button>; })}</div><p className="hint">Hit the lit pad. Empty swings dent your accuracy.</p></div>;
 }
-
+/* ---- NIM POP ------------------------------------------------------------- */
 function Pop({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [balloons]=useState(()=>{
     const puzzle = seed ? createPuzzle("pop", seed) : null;
@@ -539,21 +562,27 @@ function Pop({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [,setTick]=useState(0);
   const [popped,setPopped]=useState<number[]>([]);
   const [misses,setMisses]=useState(0);
+  const [combo,setCombo]=useState(0);
+  const [burst,setBurst]=useState<{idx:number;slot:number;t:number}|null>(null);
+  const [flashSlot,setFlashSlot]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
   const done=outcome!==null;
   useEffect(()=>{ if(done) return; const id=setInterval(()=>setTick(x=>x+1),70); return ()=>clearInterval(id); },[done]);
   const elapsed=performance.now()-base;
   useEffect(()=>{ if(done||finishedRef.current) return; if(elapsed>=20000){ finishedRef.current=true; const goal=Math.ceil(balloons.length*0.8); const preview={score:Math.max(0,popped.length*80-misses*30),xp:popped.length>=goal?170:120}; setOutcome(preview); onFinish(preview); } });
+  useEffect(()=>{ if(burst!==null) window.setTimeout(()=>setBurst(null),320); else if(flashSlot!==null) window.setTimeout(()=>setFlashSlot(null),190); });
   const visible = balloons.map((balloon,index)=>({balloon,index})).filter(({balloon,index})=>!popped.includes(index)&&elapsed>=balloon.spawnAt&&elapsed<=balloon.spawnAt+1300);
-  function burst(index:number,slot:number){
+  function pop(idx:number,slot:number){
     if(done||finishedRef.current) return;
     onEvent({type:"choice",value:String(slot)});
-    if(visible.some(v=>v.index===index)) setPopped(p=>[...p,index]); else setMisses(m=>m+1);
+    if(visible.some(v=>v.index===idx)){ setPopped(p=>[...p,idx]); setBurst({idx,slot,t:Date.now()}); setCombo(c=>c+1); setFlashSlot(null); }
+    else { setMisses(m=>m+1); setCombo(1); setFlashSlot(slot); }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge"><GameHUD label="NIM POP" value={`${popped.length} POPPED`} timer={`${Math.max(0,(20000-elapsed)/1000).toFixed(1)}s`}/><div className="pop-stage">{Array.from({length:6},(_,slot)=>{ const lane=visible.filter(v=>v.balloon.slot===slot); return <div key={slot} className="pop-lane">{lane.map(({balloon,index})=><button key={index} className="pop-balloon" onClick={()=>burst(index,balloon.slot)}/>)}</div>; })}</div><p className="hint">Pop every balloon before it drifts away. Wild clicks subtract points.</p></div>;
+  return <div className="challenge"><GameHUD label="NIM POP" value={`${popped.length} POPPED`} timer={`${Math.max(0,(20000-elapsed)/1000).toFixed(1)}s`}/><div className="pop-stage">{Array.from({length:6},(_,slot)=>{ const lane=visible.filter(v=>v.balloon.slot===slot); const fading=burst&&burst.slot===slot&&Date.now()-burst.t<320&&!popped.includes(burst.idx); return <div key={slot} className={`pop-lane${flashSlot===slot?" lane-flash":""}`}>{lane.map(({balloon,index})=><button key={index} className="pop-balloon" onClick={()=>pop(index,balloon.slot)}/>)}{fading?<i className="pop-burst"/>:null}</div>; })}</div><div className="pop-combo">{combo>=2?`COMBO ×${combo}`:""}</div><p className="hint">Pop balloons before they fade. Chain pops to build a combo.</p></div>;
 }
+/* ---- NIM FLIGHT ---------------------------------------------------------- */
 function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [puzzle]=useState(()=> seed ? createPuzzle("flight", seed) : null);
   const [world]=useState(()=>{
@@ -561,12 +590,16 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     return { pipes: Array.from({length:5},(_,i)=>({x:520+i*300+rand(60),gapY:150+rand(280),gap:208})), ground: 600-FLIGHT.groundPad, ceiling: FLIGHT.ceiling };
   });
   const base = startedAt || performance.now();
+  const stars = useMemo(()=>Array.from({length:16},()=>({top:8+Math.random()*66,left:Math.random()*100,size:1.5+Math.random()*2.2,dur:3+Math.random()*4,delay:Math.random()*4})),[]);
   const simRef=useRef<{ flaps: number[]; processed: number; y: number; vy: number; focus: number }>({ flaps: [], processed: 0, y: FLIGHT.startY, vy: 0, focus: 0 });
   const [birdY,setBirdY]=useState<number>(FLIGHT.startY);
+  const [tilt,setTilt]=useState(-25);
   const [clock,setClock]=useState(0);
   const [passed,setPassed]=useState(0);
+  const [toast,setToast]=useState<{n:number;t:number}|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
+  const passedRef=useRef(0);
   const done=outcome!==null;
   useEffect(()=>{
     if(done) return;
@@ -584,7 +617,14 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
       if(dt>0){ s.y=s.y+s.vy*dt+0.5*FLIGHT.gravity*dt*dt; s.vy=s.vy+FLIGHT.gravity*dt; s.focus=t; }
       s.y=Math.min(Math.max(s.y,world.ceiling),world.ground);
       const verdict=simulateFlight(world,s.flaps.filter(f=>f<=t));
-      setBirdY(s.y); setClock(t); setPassed(verdict.passed);
+      setBirdY(s.y);
+      setTilt(Math.max(-42, Math.min(38, s.vy*34)));
+      setClock(t);
+      setPassed(verdict.passed);
+      if(verdict.passed>passedRef.current){
+        passedRef.current=verdict.passed;
+        setToast({n:verdict.passed,t:Date.now()});
+      }
       if((verdict.crashed||verdict.groundDead)&&!finishedRef.current){
         finishedRef.current=true;
         const preview={score:verdict.passed*120+(verdict.passed===world.pipes.length?300:0),xp:verdict.passed>=world.pipes.length?180:120,time:t};
@@ -597,6 +637,7 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     raf=requestAnimationFrame(step);
     return ()=>cancelAnimationFrame(raf);
   },[done,base,world,onFinish]);
+  useEffect(()=>{ if(toast) window.setTimeout(()=>setToast(null),520); });
   function flap(){
     if(done||finishedRef.current) return;
     simRef.current.flaps.push(Math.round(performance.now()-base));
@@ -608,9 +649,10 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     return ()=>window.removeEventListener("keydown",onKey);
   });
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  const scale=400/(world.ground-world.ceiling);
-  return <div className="challenge"><GameHUD label="NIM FLIGHT" value={`${passed}/${world.pipes.length} GATES`} timer="tap to flap"/><div className="flight-stage" onClick={flap}>{world.pipes.map((pipe,index)=>{ const screenX=pipe.x-clock*FLIGHT.speed; if(screenX<-80||screenX>560) return null; return <div key={index}><div className="flight-pipe top" style={{left:`${screenX}px`,height:`${(pipe.gapY-FLIGHT.gapHalf-world.ceiling)*scale}px`}}/><div className="flight-pipe bottom" style={{left:`${screenX}px`,top:`${(pipe.gapY+FLIGHT.gapHalf-world.ceiling)*scale}px`,bottom:0}}/></div>; })}<div className="flight-bird" style={{top:`${(((birdY-world.ceiling)/(world.ground-world.ceiling))*100).toFixed(1)}%`}}><Flame size={16}/></div><div className="flight-ground"/></div><button className="primary huge" onClick={flap}>FLAP</button><p className="hint">Tap or press space to climb. Thread every gate without crashing.</p></div>;
+  const scaleY=400/(world.ground-world.ceiling);
+  return <div className="challenge"><GameHUD label="NIM FLIGHT" value={`${passed}/${world.pipes.length} GATES`} timer="tap to flap"/><div className="flight-stage" onClick={flap}>{stars.map((s,i)=><i key={i} className="flight-star" style={{top:`${s.top}%`,left:`${s.left}%`,width:`${s.size}px`,height:`${s.size}px`,animationDuration:`${s.dur}s`,animationDelay:`${s.delay}s`}}/>)}{world.pipes.map((pipe,index)=>{ const screenX=pipe.x-clock*FLIGHT.speed; if(screenX<-80||screenX>560) return null; return <div key={index}><div className="flight-pipe top" style={{left:`${screenX}px`,height:`${(pipe.gapY-FLIGHT.gapHalf-world.ceiling)*scaleY}px`}}/><div className="flight-pipe bottom" style={{left:`${screenX}px`,top:`${(pipe.gapY+FLIGHT.gapHalf-world.ceiling)*scaleY}px`,bottom:0}}/></div>; })}<div className="flight-bird" style={{top:`${(((birdY-world.ceiling)/(world.ground-world.ceiling))*100).toFixed(1)}%`,marginTop:0,transform:`translateY(-50%) rotate(${tilt}deg)`}}><Flame size={16}/></div><div className="flight-ground"/>{toast?<span key={toast.t} className="pass-toast">+{toast.n} GATE</span>:null}</div><button className="primary huge" onClick={flap}>FLAP</button><p className="hint">Tap or press space to climb. Thread every gate without crashing.</p></div>;
 }
+/* ---- NIM MEMORY ---------------------------------------------------------- */
 function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [rounds]=useState(()=>{
     const puzzle = seed ? createPuzzle("memory", seed) : null;
@@ -621,7 +663,10 @@ function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [lit,setLit]=useState(-2);
   const [inputCount,setInputCount]=useState(0);
   const [correctRounds,setCorrectRounds]=useState(0);
+  const [flash,setFlash]=useState<number|null>(null);
+  const [wrong,setWrong]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
+  const pausedRef=useRef(false);
   const done=outcome!==null;
   const roundData=rounds[Math.min(round,rounds.length-1)];
   useEffect(()=>{
@@ -636,23 +681,30 @@ function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
     },step);
     return ()=>clearInterval(id);
   },[round,done]);
+  useEffect(()=>{ if(flash!==null) window.setTimeout(()=>setFlash(null),160); });
+  useEffect(()=>{ if(wrong!==null) window.setTimeout(()=>setWrong(null),320); });
   function tap(index:number){
-    if(done||lit>=0) return;
+    if(done||lit>=0||pausedRef.current) return;
     onEvent({type:"choice",value:String(index)});
     if(index===roundData.colors[inputCount]){
+      setFlash(index);
       if(inputCount+1>=roundData.colors.length){
         const next=correctRounds+1;
         setCorrectRounds(next);
         if(round+1>=rounds.length){ const preview={score:next*200+100,xp:180}; setOutcome(preview); onFinish(preview); }
         else { setRound(round+1); setInputCount(0); }
       } else setInputCount(inputCount+1);
-    } else { const preview={score:correctRounds*200,xp:120}; setOutcome(preview); onFinish(preview); }
+    } else {
+      setWrong(index);
+      pausedRef.current=true;
+      window.setTimeout(()=>{ pausedRef.current=false; const preview={score:correctRounds*200,xp:120}; setOutcome(preview); onFinish(preview); },320);
+    }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
   const showColor=lit>=0?roundData.colors[lit]:-1;
-  return <div className="challenge narrow"><GameHUD label="NIM MEMORY" value={`ROUND ${round+1}/${rounds.length}`} timer={lit>=0?"WATCH":"REPEAT"}/><div className="memory-tiles">{COLORS.map((color,index)=><button key={color} className={`memory-tile${index===showColor?" lit":""}`} style={{background:color}} onClick={()=>tap(index)}/>)}</div><p className="hint">{lit>=0?"Memorize the sequence...":"Repeat the sequence in order."}</p></div>;
+  return <div className="challenge narrow"><GameHUD label="NIM MEMORY" value={`ROUND ${round+1}/${rounds.length}`} timer={lit>=0?"WATCH":"REPEAT"}/><div className="memory-pips">{Array.from({length:roundData.colors.length},(_,p)=><i key={p} className={p<inputCount?"on":""}/>)}</div><div className="memory-tiles">{COLORS.map((color,index)=>{const cls=index===showColor?" lit":index===flash?" flash-hit":index===wrong?" flash-wrong":"";return <button key={color} className={`memory-tile${cls}`} style={{background:color}} onClick={()=>tap(index)}/>;})}</div><p className="hint">{lit>=0?"Memorize the sequence...":`Repeat it — ${inputCount}/${roundData.colors.length} entered`}</p></div>;
 }
-
+/* ---- NIM STACK ----------------------------------------------------------- */
 function StackTower({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [p]=useState(()=>{
     const puzzle = seed ? createPuzzle("stack", seed) : null;
@@ -663,10 +715,14 @@ function StackTower({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps
   const [,setTick]=useState(0);
   const [tower,setTower]=useState<Array<{x:number;width:number}>>([]);
   const [width,setWidth]=useState(p.startWidth);
+  const [landed,setLanded]=useState(-1);
+  const [whiff,setWhiff]=useState(0);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
   const done=outcome!==null;
   useEffect(()=>{ if(done) return; let raf=0; const loop=()=>{ setTick(x=>x+1); raf=requestAnimationFrame(loop); }; raf=requestAnimationFrame(loop); return ()=>cancelAnimationFrame(raf); },[done]);
+  useEffect(()=>{ if(landed>=0) window.setTimeout(()=>setLanded(-1),240); });
+  useEffect(()=>{ if(whiff) window.setTimeout(()=>setWhiff(0),280); });
   const elapsed=performance.now()-base;
   const x=stackBlockX(p,elapsed);
   function drop(){
@@ -675,14 +731,21 @@ function StackTower({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps
     onEvent({type:"choice",value:String(Math.round(nowX))});
     const prevX=tower.length?tower[tower.length-1].x:0;
     const offset=Math.abs(nowX-prevX);
-    if(offset>=width){ finishedRef.current=true; const preview={score:tower.length*150,xp:tower.length>=p.target?200:120}; setOutcome(preview); onFinish(preview); return; }
+    if(offset>=width){
+      setWhiff(w=>w+1);
+      finishedRef.current=true;
+      const preview={score:tower.length*150,xp:tower.length>=p.target?200:120};
+      window.setTimeout(()=>{ setOutcome(preview); onFinish(preview); },300);
+      return;
+    }
     const nextWidth=Math.max(16,width-offset*0.5);
     setTower(v=>[...v,{x:nowX,width:nextWidth}]);
     setWidth(nextWidth);
+    setLanded(tower.length);
     if(tower.length+1>=p.target){ finishedRef.current=true; const preview={score:(tower.length+1)*150+250,xp:200}; setOutcome(preview); onFinish(preview); }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge"><GameHUD label="NIM STACK" value={`${tower.length}/${p.target} BLOCKS`} timer={`BASE ${Math.round(width)}`}/><div className="stack-stage" onClick={drop}><div className="stack-tower">{tower.map((block,index)=><div key={index} className="stack-block" style={{width:`${block.width}px`,left:`calc(50% + ${block.x}px - ${block.width/2}px)`,bottom:`${index*26}px`}}/>)}</div><div className="stack-block stack-moving" style={{width:`${width}px`,left:`calc(50% + ${x}px - ${width/2}px)`,bottom:`${tower.length*26}px`}}/></div><button className="primary huge" onClick={drop}>DROP</button><p className="hint">Drop when the moving block sits over the tower. Misses shave your base.</p></div>;
+  return <div className="challenge"><GameHUD label="NIM STACK" value={`${tower.length}/${p.target} BLOCKS`} timer={`BASE ${Math.round(width)}`}/><div className="stack-stage" onClick={drop}><i key={whiff} className={`stack-guide${whiff?" shake":""}`}/><div className="stack-tower">{tower.map((block,index)=><div key={index} className={`stack-block${index===landed?" landed":""}`} style={{width:`${block.width}px`,left:`calc(50% + ${block.x}px - ${block.width/2}px)`,bottom:`${index*26}px`}}/>)}</div><div className="stack-block stack-moving" style={{width:`${width}px`,left:`calc(50% + ${x}px - ${width/2}px)`,bottom:`${tower.length*26}px`}}/></div><button className="primary huge" onClick={drop}>DROP</button><p className="hint">Drop when the moving block sits over the tower. Misses shave your base.</p></div>;
 }
 
 function GameHUD({label,value,timer}:{label:string;value:string;timer:string}) {

@@ -73,3 +73,46 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
 .stack-stage{position:relative;height:320px;max-width:680px;margin:10px auto;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:linear-gradient(180deg,#0b1220,#0b0e15);overflow:hidden;cursor:pointer}
 .stack-block{position:absolute;height:22px;border-radius:6px;background:linear-gradient(90deg,#4ba3ff,#7ee0ff);box-shadow:0 2px 10px rgba(75,163,255,.35)}
 .stack-moving{background:linear-gradient(90deg,#ffd84d,#e8963c);box-shadow:0 2px 14px rgba(255,216,77,.45)}
+
+/* ---- GEN-2 upgrade: game juice + lobby cards ---- */
+@keyframes jolt-shake{0%,100%{transform:translateX(0)}10%,30%,50%,70%,90%{transform:translateX(-10px)}20%,40%,60%,80%{transform:translateX(10px)}}
+@keyframes live-pulse{0%,100%{box-shadow:0 0 0 3px rgba(232,67,60,.35),0 0 46px rgba(232,67,60,.28)}50%{box-shadow:0 0 0 7px rgba(232,67,60,.55),0 0 74px rgba(232,67,60,.42)}}
+@keyframes burst-pop{0%{transform:scale(1);opacity:1}60%{transform:scale(1.5);opacity:.85}100%{transform:scale(1.9);opacity:0}}
+@keyframes flash-sink{0%{opacity:1}100%{opacity:.25}}
+@keyframes star-drift{from{transform:translateX(0)}to{transform:translateX(-150px)}}
+@keyframes toast-rise{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-46px);opacity:0}}
+@keyframes block-land{0%{transform:translateY(-16px)}100%{transform:translateY(0)}}
+@keyframes whiff-shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+@keyframes combo-pop{0%{transform:scale(.6)}55%{transform:scale(1.35)}100%{transform:scale(1)}}
+
+.reaction-pad{position:relative}
+.reaction-pad.jolted{color:#e8433c;border-color:rgba(232,67,60,.6);box-shadow:0 0 0 3px rgba(232,67,60,.3);animation:jolt-shake .4s ease}
+.reaction-pad.live{animation:live-pulse .5s ease-in-out infinite}
+.reaction-fill{position:absolute;left:0;bottom:0;height:6px;border-radius:3px;background:linear-gradient(90deg,#4ba3ff,#ffd84d);transition:width .05s linear}
+.color-pips{display:flex;gap:6px;justify-content:center;margin:2px 0 10px}
+.color-pips i{width:10px;height:10px;border-radius:50%;background:#1b1f2a;border:1px solid rgba(255,255,255,.15)}
+.color-pips i.on{background:#ffd84d;box-shadow:0 0 10px rgba(255,216,77,.4)}
+.stroop-btn.cf-hit{background:#143d1f;border-color:#4cd964;color:#4cd964;animation:flash-sink .2s}
+.stroop-btn.cf-miss{background:#3d1014;border-color:#e8433c;color:#e8433c;animation:flash-sink .3s}
+.whack-hole.burst{box-shadow:0 0 0 5px rgba(232,67,60,.45);animation:burst-pop .18s}
+.whack-hole.miss-flash{border-color:#e8433c;box-shadow:0 0 18px rgba(232,67,60,.4);color:#e8433c}
+.pop-stage{position:relative}
+.pop-lane.lane-flash{animation:flash-sink .19s}
+.pop-burst{width:66px;height:78px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#ffd84d 62%);opacity:0;animation:burst-pop .32s;pointer-events:none}
+.pop-combo{display:inline-block;margin:4px auto;padding:3px 12px;border-radius:999px;font-size:13px;font-weight:800;color:#0b0e15;background:linear-gradient(90deg,#ffd84d,#e8963c);letter-spacing:.08em;animation:combo-pop .18s ease}
+.memory-pips{display:flex;gap:6px;justify-content:center;margin:2px 0 12px}
+.memory-pips i{width:12px;height:6px;border-radius:3px;background:#2a2f3d;transition:background .1s}
+.memory-pips i.on{background:#4cd964;box-shadow:0 0 8px rgba(76,217,100,.35)}
+.memory-tile.flash-hit{opacity:1;transform:scale(1.05);border-color:#4cd964;box-shadow:0 0 22px rgba(76,217,100,.4)}
+.memory-tile.flash-wrong{opacity:1;border-color:#e8433c;box-shadow:0 0 22px rgba(232,67,60,.45)}
+.flight-star{position:absolute;border-radius:50%;background:#ffd84d;opacity:.5;animation:star-drift 5s linear infinite}
+.pass-toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);color:#4ba3ff;font-weight:800;font-size:15px;text-shadow:0 2px 8px rgba(75,163,255,.5);animation:toast-rise .52s ease-out;pointer-events:none}
+.stack-guide{position:absolute;left:50%;top:4px;bottom:0;width:1px;background:linear-gradient(180deg,rgba(255,216,77,.5),rgba(255,216,77,.08))}
+.stack-guide.shake{animation:whiff-shake .28s ease}
+.stack-block.landed{animation:block-land .22s ease}
+.card-stats{display:flex;flex-direction:column;gap:1px;font-size:10.5px;line-height:1}
+.card-stats b{color:#ffd84d;font-weight:600}
+.card-stats b.dim,.card-stats span.dim{color:#5b6273}
+.card-stats span{color:#7fd0ff}
+.editorial-game{position:relative}
+.daily-chip{position:absolute;top:7px;right:7px;font-size:9px;font-weight:800;color:#0b0e15;background:linear-gradient(90deg,#ffd84d,#e8963c);border-radius:999px;padding:2px 8px;letter-spacing:.05em;z-index:2}

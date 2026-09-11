@@ -110,9 +110,9 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;ba
 .stack-guide{position:absolute;left:50%;top:4px;bottom:0;width:1px;background:linear-gradient(180deg,rgba(255,216,77,.5),rgba(255,216,77,.08))}
 .stack-guide.shake{animation:whiff-shake .28s ease}
 .stack-block.landed{animation:block-land .22s ease}
-.card-stats{display:flex;flex-direction:column;gap:1px;font-size:10.5px;line-height:1}
+.card-stats{display:block;margin-top:6px;font-size:10.5px;line-height:1.5;color:#7fd0ff}
 .card-stats b{color:#ffd84d;font-weight:600}
-.card-stats b.dim,.card-stats span.dim{color:#5b6273}
-.card-stats span{color:#7fd0ff}
+.card-stats b.dim{color:#5b6273}
+.card-stats .sep{margin-left:7px;color:#7fd0ff}
 .editorial-game{position:relative}
 .daily-chip{position:absolute;top:7px;right:7px;font-size:9px;font-weight:800;color:#0b0e15;background:linear-gradient(90deg,#ffd84d,#e8963c);border-radius:999px;padding:2px 8px;letter-spacing:.05em;z-index:2}

@@ -16,8 +16,7 @@ Nimiq provides portable player identity — no passwords, no seed phrases, no tr
 A fast, browser + Nimiq Pay skill platform featuring short competitive challenges testing memory, timing, sequence recognition, and precision.
 
 Players can:
-- Practice locally as a guest
-- Connect a Nimiq wallet for ranked runs
+- Connect a Nimiq wallet for verified ranked runs
 - Compete on daily challenges and leaderboards
 - Challenge friends with the same seeded puzzle
 

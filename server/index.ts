@@ -482,7 +482,7 @@ app.post("/daily/claim", async c => {
 
 app.post("/runs", async c => {
   const address = await sessionAddress(c); if (!address) return c.json({ error: "ranked session required" }, 401);
-  const body = await c.req.json<{ gameId?: RankedGameId; mode?: "daily" | "ranked" | "practice" }>();
+  const body = await c.req.json<{ gameId?: RankedGameId; mode?: "daily" | "ranked" }>();
   if (!body.gameId || !rankedGames.has(body.gameId) || !body.mode) return c.json({ error: "game is not ranked-capable" }, 400);
   const day = new Date().toISOString().slice(0, 10);
   if (body.mode === "daily" && dailyGame(day) !== body.gameId) return c.json({ error: "not today's daily game" }, 409);
@@ -527,7 +527,6 @@ app.post("/runs/:id/submit", async c => {
   if (duration > gameLimits[run.game_id as RankedGameId]) return c.json({ error: "run duration exceeded" }, 400);
   const result = replay(run.game_id, run.seed, events);
   if (!result.valid) return c.json({ error: result.reason || "invalid replay" }, 400);
-  if (run.mode === "practice") return c.json({ score: result.score, xp: result.xp, ranked: false });
 
   const previousBestRow = await db.query("SELECT MAX(score) AS best FROM scores WHERE address = $1 AND game_id = $2 AND mode IN ('daily','ranked')", [address, run.game_id]);
   const previousBest = previousBestRow.rows[0]?.best === null ? null : Number(previousBestRow.rows[0]?.best ?? 0);

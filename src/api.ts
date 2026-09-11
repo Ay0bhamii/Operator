@@ -1,6 +1,6 @@
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "/api" : "http://localhost:8787");
 
-export type RunMode = "daily" | "ranked" | "practice";
+export type RunMode = "daily" | "ranked";
 export type Run = { runId: string; seed: string; gameId: string; mode: RunMode; expiresAt: string; difficulty?: { tier: number; label: string; description: string }; challengeToken?: string };
 export type DailyOperation = { day: string; gameId: string; startsAt: string; endsAt: string; rewardNim: number; qualificationScore: number };
 export type DailyStatus = { eligible: boolean; claimed: boolean; score: number; rewardNim: number; qualificationScore: number };

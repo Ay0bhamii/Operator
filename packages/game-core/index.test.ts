@@ -122,6 +122,17 @@ test("flight: a bird that never flaps falls to the ground and cannot finish", ()
   assert.equal(noFlap.completed, false);
 });
 
+test("flight: live horizon verdict never projects a future ground death", () => {
+  const puzzle = createPuzzle("flight", "seed-flight");
+  if (puzzle.gameId !== "flight") return;
+  // One flap right at the start: the bird is still safely mid-air on frame 32ms.
+  const live = simulateFlight(puzzle, [16], 32);
+  assert.equal(live.groundDead, false, "horizon must ignore gates the bird has not reached yet");
+  // The full-stream projection (what the server replays) does see the landing.
+  const full = simulateFlight(puzzle, [16]);
+  assert.equal(full.groundDead, true);
+});
+
 test("flight: rapid flapping clamps at the ceiling and never grounds the bird", () => {
   // A machine-gun flap pattern rides the ceiling instead of flying off-screen or
   // falling to the floor; the run stays valid and only ends when a pipe wall is hit.

@@ -449,19 +449,38 @@ function Reaction({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) 
   const [phase,setPhase]=useState<"wait"|"live">("wait");
   const [jolt,setJolt]=useState(0);
   const [outcome,setOutcome]=useState<Result|null>(null);
+  const firedRef=useRef(false);
+  const [,setTick]=useState(0);
   const base = startedAt || performance.now();
+  // Tick while arming so the pad's fill bar sweeps smoothly instead of freezing
+  // on a single frame until the node goes live.
+  useEffect(()=>{ if(outcome) return; const id=setInterval(()=>setTick(x=>x+1),50); return ()=>clearInterval(id); },[outcome]);
   useEffect(()=>{
     if(phase!=="wait") return;
     const id = window.setTimeout(()=>setPhase("live"), Math.max(0, base + delay - performance.now()));
     return ()=>window.clearTimeout(id);
   },[phase,delay,base]);
+  // If the node goes live and the player never taps, finish cleanly instead of
+  // waiting for the server-side run expiry. An empty event list replays as a
+  // valid incomplete run, so the result is simply a 0-point, unfinished run.
+  useEffect(()=>{
+    if(phase!=="live"||outcome) return;
+    const id = window.setTimeout(()=>{
+      if(outcome||firedRef.current) return;
+      const t = Math.round(performance.now()-base);
+      setOutcome({score:0,xp:0,time:t});
+      onFinish({score:0,xp:0,time:t});
+    },5000);
+    return ()=>window.clearTimeout(id);
+  },[phase,outcome,base]);
   const fill = Math.max(0, Math.min(1, (performance.now() - base) / delay));
   function hit(){
-    if(outcome) return;
+    if(outcome||firedRef.current) return;
     if(phase==="wait"){
       setJolt(j=>j+1);
       return;
     }
+    firedRef.current=true;
     const t = Math.round(performance.now()-base);
     onEvent({type:"choice",value:"go"});
     const score = Math.max(10, Math.min(1000, 1000-(t-delay)));
@@ -469,7 +488,7 @@ function Reaction({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) 
     onFinish({score,xp:160,time:t});
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge narrow"><GameHUD label="NIM REACTION" value={phase==="live"?"TAP NOW":"GET READY..."} timer="one shot"/><button key={jolt} className={`reaction-pad ${phase}${jolt?" jolted":""}`} onClick={hit}><Gauge size={44}/><b>{phase==="live"?"TAP":"WAIT FOR IT"}</b><small>{phase==="live"?"node is live":"arming pad…"}</small><i className="reaction-fill" style={{width:`${(phase==="live"?100:fill*100).toFixed(1)}%`}}/></button><p className="hint">{jolt&&phase==="wait"?"Too early — the pad re-arms. Wait for the node.":"One click the instant the node lights up. False starts re-arm the pad."}</p></div>;
+  return <div className="challenge narrow"><GameHUD label="NIM REACTION" value={phase==="live"?"TAP NOW":"GET READY..."} timer="one shot"/><button key={jolt} className={`reaction-pad ${phase}${jolt?" jolted":""}`} onClick={hit}><Gauge size={44}/><b>{phase==="live"?"TAP":"WAIT FOR IT"}</b><small>{phase==="live"?"node is live":"arming pad…"}</small><i className="reaction-fill" style={{width:`${(phase==="live"?100:fill*100).toFixed(1)}%`}}/></button><p className="hint">{jolt&&phase==="wait"?"Too early — hold still. The pad re-arms for the real node.":"One click the instant the node lights up. False starts re-arm the pad."}</p></div>;
 }
 /* ---- NIM COLOR ----------------------------------------------------------- */
 function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
@@ -482,7 +501,7 @@ function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [correct,setCorrect]=useState(0);
   const [flash,setFlash]=useState<{kind:"hit"|"miss";index:number}|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
-  const [deadline,setDeadline]=useState(()=>performance.now()+data.limits[0]+400);
+  const [deadline,setDeadline]=useState(()=>performance.now()+data.limits[0]+600);
   const pendingRef=useRef(false);
   const [,setTick]=useState(0);
   const done = outcome !== null;
@@ -505,7 +524,7 @@ function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
       pendingRef.current=true;
       window.setTimeout(()=>{ pendingRef.current=false; setFlash(null); },150);
       if(round+1>=data.rounds.length){ const preview={score:next*100+200,xp:160}; setOutcome(preview); onFinish(preview); }
-      else { setRound(round+1); setDeadline(performance.now()+data.limits[round+1]+400); }
+      else { setRound(round+1); setDeadline(performance.now()+data.limits[round+1]+600); }
     } else {
       setFlash({kind:"miss",index});
       pendingRef.current=true;
@@ -520,31 +539,43 @@ function ColorStreak({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
 }
 /* ---- NIM WHACK ----------------------------------------------------------- */
 function Whack({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
-  const [targets]=useState(()=>{
+  const stateRef=useRef<{ targets: {slot:number;from:number;to:number}[]; pending: {slot:number;from:number;to:number}[] }|null>(null);
+  if(!stateRef.current){
     const puzzle = seed ? createPuzzle("whack", seed) : null;
-    if(puzzle && puzzle.gameId === "whack") return [...puzzle.targets].sort((a,b)=>a.from-b.from);
-    return Array.from({length:12},(_,i)=>({slot:rand(9),from:400+i*550,to:400+i*550+900}));
-  });
+    const targets = puzzle && puzzle.gameId === "whack"
+      ? [...puzzle.targets] as {slot:number;from:number;to:number}[]
+      : Array.from({length:12},(_,i)=>({slot:rand(9),from:400+i*550,to:400+i*550+900}));
+    stateRef.current={targets,pending:[...targets]};
+  }
   const base = startedAt || performance.now();
   const [,setTick]=useState(0);
   const [hits,setHits]=useState(0);
   const [misses,setMisses]=useState(0);
-  const [cursor,setCursor]=useState(0);
   const [burst,setBurst]=useState<number|null>(null);
   const [flash,setFlash]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
+  const sentRef=useRef(0);
   const done=outcome!==null;
   useEffect(()=>{ if(done) return; const id=setInterval(()=>setTick(x=>x+1),60); return ()=>clearInterval(id); },[done]);
   const elapsed=performance.now()-base;
   useEffect(()=>{ if(done||finishedRef.current) return; if(elapsed>=10000){ finishedRef.current=true; const preview={score:Math.max(0,hits*100-misses*40),xp:hits>=10?160:120}; setOutcome(preview); onFinish(preview); } });
-  useEffect(()=>{ if(!done && cursor<targets.length && elapsed>targets[cursor].to+120){ setCursor(cursor+1); } });
+  // Mirror the server: a swing is a hit if ANY pending target with this slot has its
+  // window (from..to+250, same as replay) open at the swing time. This keeps the
+  // on-screen preview identical to the verified verdict. The lit mole is the first
+  // pending target whose window is ACTIVE — never one that is still closed, so an
+  // eager early tap is a visible miss instead of a lucky server-side hit.
+  const pending=stateRef.current.pending;
+  const visible = pending.find(t=>elapsed>=t.from&&elapsed<=t.to+250) ?? null;
   useEffect(()=>{ if(burst!==null) window.setTimeout(()=>setBurst(null),190); else if(flash!==null) window.setTimeout(()=>setFlash(null),190); });
-  const visible = cursor < targets.length && elapsed >= targets[cursor].from && elapsed <= targets[cursor].to + 120 ? targets[cursor] : null;
   function swing(slot:number){
     if(done||finishedRef.current) return;
+    if(sentRef.current>=60) return; // server rejects replays with >60 events
+    sentRef.current+=1;
+    const t=Math.round(performance.now()-base);
     onEvent({type:"choice",value:String(slot)});
-    if(visible && slot===visible.slot){ setHits(h=>h+1); setBurst(slot); setCursor(c=>c+1); }
+    const index = pending.findIndex(target => target.slot===slot && t>=target.from && t<=target.to+250);
+    if(index>=0){ pending.splice(index,1); setHits(h=>h+1); setBurst(slot); }
     else { setMisses(m=>m+1); setFlash(slot); }
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
@@ -553,11 +584,15 @@ function Whack({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
 }
 /* ---- NIM POP ------------------------------------------------------------- */
 function Pop({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
-  const [balloons]=useState(()=>{
+  const stateRef=useRef<{ balloons: {slot:number;spawnAt:number}[]; pending: ({slot:number;spawnAt:number}|null)[] }|null>(null);
+  if(!stateRef.current){
     const puzzle = seed ? createPuzzle("pop", seed) : null;
-    if(puzzle && puzzle.gameId === "pop") return puzzle.balloons;
-    return Array.from({length:16},(_,i)=>({slot:rand(6),spawnAt:300+i*1150}));
-  });
+    const balloons = puzzle && puzzle.gameId === "pop"
+      ? puzzle.balloons as {slot:number;spawnAt:number}[]
+      : Array.from({length:16},(_,i)=>({slot:rand(6),spawnAt:300+i*1150}));
+    stateRef.current={balloons,pending:[...balloons]};
+  }
+  const balloons=stateRef.current.balloons;
   const base = startedAt || performance.now();
   const [,setTick]=useState(0);
   const [popped,setPopped]=useState<number[]>([]);
@@ -567,20 +602,37 @@ function Pop({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [flashSlot,setFlashSlot]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
+  const sentRef=useRef(0);
   const done=outcome!==null;
   useEffect(()=>{ if(done) return; const id=setInterval(()=>setTick(x=>x+1),70); return ()=>clearInterval(id); },[done]);
   const elapsed=performance.now()-base;
   useEffect(()=>{ if(done||finishedRef.current) return; if(elapsed>=20000){ finishedRef.current=true; const goal=Math.ceil(balloons.length*0.8); const preview={score:Math.max(0,popped.length*80-misses*30),xp:popped.length>=goal?170:120}; setOutcome(preview); onFinish(preview); } });
   useEffect(()=>{ if(burst!==null) window.setTimeout(()=>setBurst(null),320); else if(flashSlot!==null) window.setTimeout(()=>setFlashSlot(null),190); });
-  const visible = balloons.map((balloon,index)=>({balloon,index})).filter(({balloon,index})=>!popped.includes(index)&&elapsed>=balloon.spawnAt&&elapsed<=balloon.spawnAt+1300);
-  function pop(idx:number,slot:number){
+  const visible = balloons.map((balloon,index)=>({balloon,index})).filter(({balloon,index})=>!popped.includes(index)&&elapsed>=balloon.spawnAt&&elapsed<=balloon.spawnAt+1550);
+  const pending=stateRef.current.pending;
+  const popAtRef=useRef<Record<number,number>>({});
+  function pop(slot:number){
     if(done||finishedRef.current) return;
-    onEvent({type:"choice",value:String(slot)});
-    if(visible.some(v=>v.index===idx)){ setPopped(p=>[...p,idx]); setBurst({idx,slot,t:Date.now()}); setCombo(c=>c+1); setFlashSlot(null); }
+    if(sentRef.current>=80) return; // server rejects replays with >80 events
+    const nowT=performance.now();
+    // Ignore accidental double-clicks on a slot that was just popped; the tile has
+    // already despawned, so without this the second tap would count as a $-30 miss.
+    if(nowT-popAtRef.current[slot]<200) return;
+    sentRef.current+=1;
+    const t=Math.round(nowT-base);
+    const index = pending.findIndex(balloon => balloon !== null && balloon.slot===slot && t>=balloon.spawnAt && t<=balloon.spawnAt+1550);
+    // Mirror the server: the first pending balloon with this slot whose window
+    // (spawnAt..spawnAt+1550, same as replay) is open gets popped.
+    if(index>=0){
+      popAtRef.current[slot]=nowT;
+      pending[index]=null;
+      setPopped(p=>[...p,index]); setBurst({idx:index,slot,t:Date.now()}); setCombo(c=>c+1); setFlashSlot(null);
+    }
     else { setMisses(m=>m+1); setCombo(1); setFlashSlot(slot); }
+    onEvent({type:"choice",value:String(slot)});
   }
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
-  return <div className="challenge"><GameHUD label="NIM POP" value={`${popped.length} POPPED`} timer={`${Math.max(0,(20000-elapsed)/1000).toFixed(1)}s`}/><div className="pop-stage">{Array.from({length:6},(_,slot)=>{ const lane=visible.filter(v=>v.balloon.slot===slot); const fading=burst&&burst.slot===slot&&Date.now()-burst.t<320&&!popped.includes(burst.idx); return <div key={slot} className={`pop-lane${flashSlot===slot?" lane-flash":""}`}>{lane.map(({balloon,index})=><button key={index} className="pop-balloon" onClick={()=>pop(index,balloon.slot)}/>)}{fading?<i className="pop-burst"/>:null}</div>; })}</div><div className="pop-combo">{combo>=2?`COMBO ×${combo}`:""}</div><p className="hint">Pop balloons before they fade. Chain pops to build a combo.</p></div>;
+  return <div className="challenge"><GameHUD label="NIM POP" value={`${popped.length} POPPED`} timer={`${Math.max(0,(20000-elapsed)/1000).toFixed(1)}s`}/><div className="pop-stage">{Array.from({length:6},(_,slot)=>{ const lane=visible.filter(v=>v.balloon.slot===slot&&!popped.includes(v.index)); const fading=burst&&burst.slot===slot&&Date.now()-burst.t<320&&popped.includes(burst.idx); return <div key={slot} className={`pop-lane${flashSlot===slot?" lane-flash":""}`}>{lane.map(({balloon,index})=><button key={index} className="pop-balloon" onClick={()=>pop(balloon.slot)}/>)}{fading?<i className="pop-burst"/>:null}</div>; })}</div><div className="pop-combo">{combo>=2?`COMBO ×${combo}`:""}</div><p className="hint">Pop balloons before they fade. Chain pops to build a combo.</p></div>;
 }
 /* ---- NIM FLIGHT ---------------------------------------------------------- */
 function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
@@ -607,16 +659,31 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     const step=()=>{
       const s=simRef.current;
       const t=Math.round(performance.now()-base);
-      while(s.processed<s.flaps.length&&s.flaps[s.processed]<=t){
+      // Integrate physics and detect a real floor landing between inputs (raw,
+      // unclamped y). The verdict below is horizon-limited to gates already reached,
+      // so a far-away future gate can no longer fake a ground death one frame in.
+      let landed=false;
+      while(s.processed<s.flaps.length&&s.flaps[s.processed]<=t&&!landed){
         const dt=s.flaps[s.processed]-s.focus;
-        if(dt>0){ s.y=s.y+s.vy*dt+0.5*FLIGHT.gravity*dt*dt; s.vy=s.vy+FLIGHT.gravity*dt; s.focus=s.flaps[s.processed]; }
+        if(dt>0){
+          const raw=s.y+s.vy*dt+0.5*FLIGHT.gravity*dt*dt;
+          if(raw>=world.ground){ landed=true; s.y=world.ground; break; }
+          s.y=raw; s.vy=s.vy+FLIGHT.gravity*dt; s.focus=s.flaps[s.processed];
+        }
         s.vy=FLIGHT.flap;
         s.processed+=1;
       }
-      const dt=t-s.focus;
-      if(dt>0){ s.y=s.y+s.vy*dt+0.5*FLIGHT.gravity*dt*dt; s.vy=s.vy+FLIGHT.gravity*dt; s.focus=t; }
+      if(!landed){
+        const dt=t-s.focus;
+        if(dt>0){
+          const raw=s.y+s.vy*dt+0.5*FLIGHT.gravity*dt*dt;
+          if(raw>=world.ground){ landed=true; s.y=world.ground; }
+          else { s.y=raw; s.vy=s.vy+FLIGHT.gravity*dt; s.focus=t; }
+        }
+      }
       s.y=Math.min(Math.max(s.y,world.ceiling),world.ground);
-      const verdict=simulateFlight(world,s.flaps.filter(f=>f<=t));
+      const verdict=simulateFlight(world,s.flaps.filter(f=>f<=t),t);
+      const reached=world.pipes.reduce((count,pipe)=>count+((pipe.x-FLIGHT.birdX)/FLIGHT.speed<=t?1:0),0);
       setBirdY(s.y);
       setTilt(Math.max(-42, Math.min(38, s.vy*34)));
       setClock(t);
@@ -625,12 +692,22 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
         passedRef.current=verdict.passed;
         setToast({n:verdict.passed,t:Date.now()});
       }
-      if((verdict.crashed||verdict.groundDead)&&!finishedRef.current){
-        finishedRef.current=true;
-        const preview={score:verdict.passed*120+(verdict.passed===world.pipes.length?300:0),xp:verdict.passed>=world.pipes.length?180:120,time:t};
-        setOutcome(preview);
-        onFinish(preview);
-        return;
+      if(!finishedRef.current){
+        if(verdict.passed>=world.pipes.length){
+          finishedRef.current=true;
+          setToast({n:verdict.passed,t:Date.now()});
+          const preview={score:verdict.passed*120+300,xp:180,time:t};
+          setOutcome(preview);
+          onFinish(preview);
+          return;
+        }
+        if(landed||verdict.groundDead||verdict.passed<reached){
+          finishedRef.current=true;
+          const preview={score:verdict.passed*120,xp:120,time:t};
+          setOutcome(preview);
+          onFinish(preview);
+          return;
+        }
       }
       raf=requestAnimationFrame(step);
     };
@@ -640,6 +717,7 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   useEffect(()=>{ if(toast) window.setTimeout(()=>setToast(null),520); });
   function flap(){
     if(done||finishedRef.current) return;
+    if(simRef.current.flaps.length>=120) return; // server rejects replays with >120 events
     simRef.current.flaps.push(Math.round(performance.now()-base));
     onEvent({type:"key",value:"flap"});
   }
@@ -647,7 +725,7 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     const onKey=(event:KeyboardEvent)=>{ if(event.code==="Space"&&!event.repeat){ event.preventDefault(); flap(); } };
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  });
+  },[done,base]);
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
   const scaleY=400/(world.ground-world.ceiling);
   return <div className="challenge"><GameHUD label="NIM FLIGHT" value={`${passed}/${world.pipes.length} GATES`} timer="tap to flap"/><div className="flight-stage" onClick={flap}>{stars.map((s,i)=><i key={i} className="flight-star" style={{top:`${s.top}%`,left:`${s.left}%`,width:`${s.size}px`,height:`${s.size}px`,animationDuration:`${s.dur}s`,animationDelay:`${s.delay}s`}}/>)}{world.pipes.map((pipe,index)=>{ const screenX=pipe.x-clock*FLIGHT.speed; if(screenX<-80||screenX>560) return null; return <div key={index}><div className="flight-pipe top" style={{left:`${screenX}px`,height:`${(pipe.gapY-FLIGHT.gapHalf-world.ceiling)*scaleY}px`}}/><div className="flight-pipe bottom" style={{left:`${screenX}px`,top:`${(pipe.gapY+FLIGHT.gapHalf-world.ceiling)*scaleY}px`,bottom:0}}/></div>; })}<div className="flight-bird" style={{top:`${(((birdY-world.ceiling)/(world.ground-world.ceiling))*100).toFixed(1)}%`,marginTop:0,transform:`translateY(-50%) rotate(${tilt}deg)`}}><Flame size={16}/></div><div className="flight-ground"/>{toast?<span key={toast.t} className="pass-toast">+{toast.n} GATE</span>:null}</div><button className="primary huge" onClick={flap}>FLAP</button><p className="hint">Tap or press space to climb. Thread every gate without crashing.</p></div>;
@@ -667,6 +745,7 @@ function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [wrong,setWrong]=useState<number|null>(null);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const pausedRef=useRef(false);
+  const lastTapRef=useRef(0);
   const done=outcome!==null;
   const roundData=rounds[Math.min(round,rounds.length-1)];
   useEffect(()=>{
@@ -681,10 +760,25 @@ function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
     },step);
     return ()=>clearInterval(id);
   },[round,done]);
+  // If the player stays in the REPEAT phase without input, end the run with the
+  // rounds already verified instead of leaving the game hanging on an idle screen.
+  useEffect(()=>{
+    if(done||lit>=0||round>=rounds.length) return;
+    const id=window.setTimeout(()=>{
+      if(lit>=0||outcome) return;
+      const preview={score:correctRounds*200,xp:120};
+      setOutcome(preview);
+      onFinish(preview);
+    },15000);
+    return ()=>window.clearTimeout(id);
+  },[round,lit,done,outcome]);
   useEffect(()=>{ if(flash!==null) window.setTimeout(()=>setFlash(null),160); });
   useEffect(()=>{ if(wrong!==null) window.setTimeout(()=>setWrong(null),320); });
   function tap(index:number){
     if(done||lit>=0||pausedRef.current) return;
+    const nowT=performance.now();
+    if(nowT-lastTapRef.current<130) return;
+    lastTapRef.current=nowT;
     onEvent({type:"choice",value:String(index)});
     if(index===roundData.colors[inputCount]){
       setFlash(index);
@@ -719,15 +813,22 @@ function StackTower({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps
   const [whiff,setWhiff]=useState(0);
   const [outcome,setOutcome]=useState<Result|null>(null);
   const finishedRef=useRef(false);
+  const lastDropRef=useRef(0);
   const done=outcome!==null;
   useEffect(()=>{ if(done) return; let raf=0; const loop=()=>{ setTick(x=>x+1); raf=requestAnimationFrame(loop); }; raf=requestAnimationFrame(loop); return ()=>cancelAnimationFrame(raf); },[done]);
+  // If the player never drops, end the run after the server-side stack limit (60s)
+  // instead of hanging on an idle animation forever.
+  useEffect(()=>{ if(done||finishedRef.current) return; if(performance.now()-base>=60000){ finishedRef.current=true; const preview={score:tower.length*150,xp:120}; setOutcome(preview); onFinish(preview); } });
   useEffect(()=>{ if(landed>=0) window.setTimeout(()=>setLanded(-1),240); });
   useEffect(()=>{ if(whiff) window.setTimeout(()=>setWhiff(0),280); });
   const elapsed=performance.now()-base;
   const x=stackBlockX(p,elapsed);
   function drop(){
     if(done||finishedRef.current) return;
-    const nowX=stackBlockX(p,performance.now()-base);
+    const nowT=performance.now();
+    if(nowT-lastDropRef.current<170) return;
+    lastDropRef.current=nowT;
+    const nowX=stackBlockX(p,nowT-base);
     onEvent({type:"choice",value:String(Math.round(nowX))});
     const prevX=tower.length?tower[tower.length-1].x:0;
     const offset=Math.abs(nowX-prevX);

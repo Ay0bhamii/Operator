@@ -156,6 +156,7 @@ export function stackBlockX(puzzle: { amplitude: number; period: number; phase: 
 export function simulateFlight(
   puzzle: { pipes: { x: number; gapY: number; gap: number }[]; ground: number; ceiling: number },
   flaps: number[],
+  horizon: number = Number.POSITIVE_INFINITY,
 ): { passed: number; crashed: boolean; groundDead: boolean } {
   const { ground } = puzzle;
   const birdX = FLIGHT.birdX, speed = FLIGHT.speed, g = FLIGHT.gravity, flapV = FLIGHT.flap, startY = FLIGHT.startY;
@@ -165,6 +166,10 @@ export function simulateFlight(
   const flapTimes = [...flaps].sort((a, b) => a - b);
   let y: number = startY, vy = 0, passed = 0, groundDead = false, focus = 0, flapIndex = 0;
   for (const cross of crossings) {
+    // The horizon keeps the live client from projecting the bird's future arc to a
+    // gate it has not reached yet (which falsely reported a ground death one frame
+    // into every run). The server omits it and always replays the full stream.
+    if (cross.at > horizon) break;
     while (flapIndex < flapTimes.length && flapTimes[flapIndex] <= cross.at && !groundDead) {
       const dt = flapTimes[flapIndex] - focus;
       if (dt > 0) {

@@ -356,7 +356,7 @@ function App() {
     setXp(x=>x+r.xp);
   }
 
-  if(game) return <GameShell title={games.find(g=>g.id===game)?.name||"Game"} onBack={()=>{setGame(null);setActiveRun(null)}}><Game id={game} startedAt={runStartedAt.current} run={activeRun} rankedSubmission={rankedSubmission} onEvent={event=>eventsRef.current.push({...event,t:Math.round(performance.now()-runStartedAt.current)})} onFinish={r=>finish(game,r)}/></GameShell>;
+  if(game) return <GameShell title={games.find(g=>g.id===game)?.name||"Game"} onBack={()=>{setGame(null);setActiveRun(null)}}><Game id={game} startedAt={runStartedAt.current} run={activeRun} rankedSubmission={rankedSubmission} onEvent={event=>{const {t,...rest}=event;eventsRef.current.push({...rest,t:t??Math.round(performance.now()-runStartedAt.current)})}} onFinish={r=>finish(game,r)}/></GameShell>;
 
   if(challengePath) return <><ChallengePage challengeId={decodeURIComponent(challengePath[1])} wallet={wallet} onConnect={connect} onStart={startChallenge}/>{usernamePrompt && wallet && <UsernameSetupModal input={usernameInput} error={usernameError} saving={usernameSaving} onInput={value=>{setUsernameInput(value);setUsernameError(null)}} onClose={()=>setUsernamePrompt(false)} onSave={()=>void saveUsername()}/>}</>;
 
@@ -410,7 +410,7 @@ function ChallengePage({challengeId,wallet,onConnect,onStart}:{challengeId:strin
 
 function GameShell({title,onBack,children}:{title:string;onBack:()=>void;children:any}){return <main className="game-shell"><header className="nav"><button className="back-editorial" onClick={onBack}>&lt;- OPERATIONS</button><button className="wordmark"><img className="brand-logo" src="/logo/operator-mark.svg" alt=""/><span className="wordmark-main">OPERATOR</span><span className="wordmark-sub">BY NIMIQ</span></button><div className="game-nav-title verified-nav"><Shield size={13}/> VERIFIED REPLAY · {title.toUpperCase()}</div></header><section className="game-stage">{children}</section></main>}
 
-function Game({id,startedAt,run,rankedSubmission,onEvent,onFinish}:{id:GameId;startedAt:number;run:Run|null;rankedSubmission:RankedSubmission;onEvent:(event:Omit<GameEvent,"t">)=>void;onFinish:(r:Result)=>void}) {
+function Game({id,startedAt,run,rankedSubmission,onEvent,onFinish}:{id:GameId;startedAt:number;run:Run|null;rankedSubmission:RankedSubmission;onEvent:(event:GameInput)=>void;onFinish:(r:Result)=>void}) {
   const shared = { seed: run?.seed, startedAt, rankedSubmission, onEvent, onFinish };
   switch(id) {
     case "reaction": return <Reaction {...shared}/>;
@@ -440,7 +440,11 @@ function RankedResult({submission,preview,onRestart}:{submission:RankedSubmissio
   return <div className="result"><div className="result-icon"><Clock3/></div><small>PREVIEW</small><h2>{preview.score.toLocaleString()}</h2><p>Waiting for validation...</p></div>;
 }
 
-type GameProps = { seed?: string; startedAt: number; rankedSubmission: RankedSubmission; onEvent: (event: Omit<GameEvent, "t">) => void; onFinish: (r: Result) => void };
+// A game may stamp its own event time when its play clock starts later than the run
+// clock (NIM Flight's 3-2-1-GO countdown), so the verified replay timeline stays
+// anchored to the first playable frame instead of the moment the run was created.
+type GameInput = Omit<GameEvent, "t"> & { t?: number };
+type GameProps = { seed?: string; startedAt: number; rankedSubmission: RankedSubmission; onEvent: (event: GameInput) => void; onFinish: (r: Result) => void };
 
 /* ---- NIM REACTION ------------------------------------------------------- */
 function Reaction({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
@@ -635,13 +639,26 @@ function Pop({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   return <div className="challenge"><GameHUD label="NIM POP" value={`${popped.length} POPPED`} timer={`${Math.max(0,(20000-elapsed)/1000).toFixed(1)}s`}/><div className="pop-stage">{Array.from({length:6},(_,slot)=>{ const lane=visible.filter(v=>v.balloon.slot===slot&&!popped.includes(v.index)); const fading=burst&&burst.slot===slot&&Date.now()-burst.t<320&&popped.includes(burst.idx); return <div key={slot} className={`pop-lane${flashSlot===slot?" lane-flash":""}`}>{lane.map(({balloon,index})=><button key={index} className="pop-balloon" onClick={()=>pop(balloon.slot)}/>)}{fading?<i className="pop-burst"/>:null}</div>; })}</div><div className="pop-combo">{combo>=2?`COMBO ×${combo}`:""}</div><p className="hint">Pop balloons before they fade. Chain pops to build a combo.</p></div>;
 }
 /* ---- NIM FLIGHT ---------------------------------------------------------- */
-function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
+function Flight({seed,rankedSubmission,onEvent,onFinish}:GameProps) {
   const [puzzle]=useState(()=> seed ? createPuzzle("flight", seed) : null);
   const [world]=useState(()=>{
     if(puzzle && puzzle.gameId === "flight") return { pipes: puzzle.pipes, ground: puzzle.ground, ceiling: puzzle.ceiling };
     return { pipes: Array.from({length:5},(_,i)=>({x:520+i*300+rand(60),gapY:150+rand(280),gap:208})), ground: 600-FLIGHT.groundPad, ceiling: FLIGHT.ceiling };
   });
-  const base = startedAt || performance.now();
+  // 3-2-1-GO countdown. Physics, input, and the verified replay timeline all stay
+  // frozen until GO, then the flight clock is re-based to that first playable frame.
+  // Flaps are stamped from this origin on purpose: the authoritative replay integrates
+  // the bird's arc from t=0, so a countdown folded into the timestamps would ground
+  // the bird before the player could ever tap.
+  const [count,setCount]=useState(3);
+  const [playing,setPlaying]=useState(false);
+  const playBaseRef=useRef(0);
+  useEffect(()=>{
+    if(playing) return;
+    if(count<0){ playBaseRef.current=performance.now(); setPlaying(true); return; }
+    const id=window.setTimeout(()=>setCount(c=>c-1),count===0?500:700);
+    return ()=>window.clearTimeout(id);
+  },[count,playing]);
   const stars = useMemo(()=>Array.from({length:16},()=>({top:8+Math.random()*66,left:Math.random()*100,size:1.5+Math.random()*2.2,dur:3+Math.random()*4,delay:Math.random()*4})),[]);
   const simRef=useRef<{ flaps: number[]; processed: number; y: number; vy: number; focus: number }>({ flaps: [], processed: 0, y: FLIGHT.startY, vy: 0, focus: 0 });
   const [birdY,setBirdY]=useState<number>(FLIGHT.startY);
@@ -654,11 +671,11 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
   const passedRef=useRef(0);
   const done=outcome!==null;
   useEffect(()=>{
-    if(done) return;
+    if(done||!playing) return;
     let raf=0;
     const step=()=>{
       const s=simRef.current;
-      const t=Math.round(performance.now()-base);
+      const t=Math.round(performance.now()-playBaseRef.current);
       // Integrate physics and detect a real floor landing between inputs (raw,
       // unclamped y). The verdict below is horizon-limited to gates already reached,
       // so a far-away future gate can no longer fake a ground death one frame in.
@@ -713,22 +730,23 @@ function Flight({seed,startedAt,rankedSubmission,onEvent,onFinish}:GameProps) {
     };
     raf=requestAnimationFrame(step);
     return ()=>cancelAnimationFrame(raf);
-  },[done,base,world,onFinish]);
+  },[done,playing,world,onFinish]);
   useEffect(()=>{ if(toast) window.setTimeout(()=>setToast(null),520); });
   function flap(){
-    if(done||finishedRef.current) return;
+    if(!playing||done||finishedRef.current) return; // taps during the 3-2-1-GO countdown are ignored
     if(simRef.current.flaps.length>=120) return; // server rejects replays with >120 events
-    simRef.current.flaps.push(Math.round(performance.now()-base));
-    onEvent({type:"key",value:"flap"});
+    const t=Math.round(performance.now()-playBaseRef.current);
+    simRef.current.flaps.push(t);
+    onEvent({type:"key",value:"flap",t});
   }
   useEffect(()=>{
     const onKey=(event:KeyboardEvent)=>{ if(event.code==="Space"&&!event.repeat){ event.preventDefault(); flap(); } };
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  },[done,base]);
+  },[done,playing]);
   if(outcome) return seed?<RankedResult submission={rankedSubmission} preview={outcome} onRestart={()=>location.reload()}/>:<ResultBox result={outcome} onRestart={()=>location.reload()}/>;
   const scaleY=400/(world.ground-world.ceiling);
-  return <div className="challenge"><GameHUD label="NIM FLIGHT" value={`${passed}/${world.pipes.length} GATES`} timer="tap to flap"/><div className="flight-stage" onClick={flap}>{stars.map((s,i)=><i key={i} className="flight-star" style={{top:`${s.top}%`,left:`${s.left}%`,width:`${s.size}px`,height:`${s.size}px`,animationDuration:`${s.dur}s`,animationDelay:`${s.delay}s`}}/>)}{world.pipes.map((pipe,index)=>{ const screenX=pipe.x-clock*FLIGHT.speed; if(screenX<-80||screenX>560) return null; return <div key={index}><div className="flight-pipe top" style={{left:`${screenX}px`,height:`${(pipe.gapY-FLIGHT.gapHalf-world.ceiling)*scaleY}px`}}/><div className="flight-pipe bottom" style={{left:`${screenX}px`,top:`${(pipe.gapY+FLIGHT.gapHalf-world.ceiling)*scaleY}px`,bottom:0}}/></div>; })}<div className="flight-bird" style={{top:`${(((birdY-world.ceiling)/(world.ground-world.ceiling))*100).toFixed(1)}%`,marginTop:0,transform:`translateY(-50%) rotate(${tilt}deg)`}}><Flame size={16}/></div><div className="flight-ground"/>{toast?<span key={toast.t} className="pass-toast">+{toast.n} GATE</span>:null}</div><button className="primary huge" onClick={flap}>FLAP</button><p className="hint">Tap or press space to climb. Thread every gate without crashing.</p></div>;
+  return <div className="challenge"><GameHUD label="NIM FLIGHT" value={`${passed}/${world.pipes.length} GATES`} timer={playing?"tap to flap":count>0?`starting in ${count}`:"GO!"}/><div className="flight-stage" onClick={flap}>{stars.map((s,i)=><i key={i} className="flight-star" style={{top:`${s.top}%`,left:`${s.left}%`,width:`${s.size}px`,height:`${s.size}px`,animationDuration:`${s.dur}s`,animationDelay:`${s.delay}s`}}/>)}{world.pipes.map((pipe,index)=>{ const screenX=pipe.x-clock*FLIGHT.speed; if(screenX<-80||screenX>560) return null; return <div key={index}><div className="flight-pipe top" style={{left:`${screenX}px`,height:`${(pipe.gapY-FLIGHT.gapHalf-world.ceiling)*scaleY}px`}}/><div className="flight-pipe bottom" style={{left:`${screenX}px`,top:`${(pipe.gapY+FLIGHT.gapHalf-world.ceiling)*scaleY}px`,bottom:0}}/></div>; })}<div className="flight-bird" style={{top:`${(((birdY-world.ceiling)/(world.ground-world.ceiling))*100).toFixed(1)}%`,marginTop:0,transform:`translateY(-50%) rotate(${tilt}deg)`}}><Flame size={16}/></div><div className="flight-ground"/>{toast?<span key={toast.t} className="pass-toast">+{toast.n} GATE</span>:null}{!playing?<div className="countdown-overlay"><span key={count} className="countdown-num">{count>0?count:"GO"}</span></div>:null}</div><button className="primary huge" onClick={flap}>{playing?"FLAP":count>0?"GET READY":"GO"}</button><p className="hint">Tap or press space to climb. Thread every gate without crashing.</p></div>;
 }
 /* ---- NIM MEMORY ---------------------------------------------------------- */
 function Memory({seed,rankedSubmission,onEvent,onFinish}:GameProps) {

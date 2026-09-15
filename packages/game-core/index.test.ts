@@ -147,6 +147,36 @@ test("flight: rapid flapping clamps at the ceiling and never grounds the bird", 
   assert.equal(sim.crashed, true);
 });
 
+test("flight: GO-rebased flap timeline threads every gate while a countdown-baked one cannot", () => {
+  // NIM Flight holds its physics clock, input, and verified replay timeline frozen
+  // through a 3-2-1-GO countdown, then re-bases every flap stamp to the first
+  // playable frame. The authoritative replay integrates the bird from t=0, so the
+  // countdown must never be folded into the timestamps: that grounds the bird
+  // before the player could ever tap, which is what the pre-fix client did.
+  const rhythm = [16, 144, 272, 400, 528, 656, 2032, 2160, 2288, 2416, 2544, 3408,
+    3536, 3664, 4880, 5008, 5136, 6112, 6240, 7440, 7568, 7696, 7824, 9008];
+  const taps = (offset: number) => rhythm.map(t => ({ t: t + offset, type: "key" as const, value: "flap" }));
+  const puzzle = createPuzzle("flight", "seed-flight");
+  if (puzzle.gameId !== "flight") return;
+
+  const rebased = replay("flight", "seed-flight", taps(0));
+  assert.equal(rebased.valid, true);
+  assert.equal(rebased.completed, true);
+  assert.equal(rebased.score, puzzle.pipes.length * 120 + 300);
+
+  // Only the spacing between taps matters, never the absolute origin, so starting
+  // the flight clock one frame earlier is indistinguishable.
+  const earlier = replay("flight", "seed-flight", taps(-16));
+  assert.equal(earlier.completed, true);
+  assert.equal(earlier.score, rebased.score);
+
+  // Folding a 2.6s countdown into the stamps (the pre-fix behaviour) kills the run.
+  const baked = replay("flight", "seed-flight", taps(2600));
+  assert.equal(baked.valid, true);
+  assert.equal(baked.completed, false);
+  assert.equal(baked.score, 0);
+});
+
 test("stack: dropped value that desyncs from the moving block is rejected", () => {
   const puzzle = createPuzzle("stack", "seed-stack");
   if (puzzle.gameId !== "stack") return;

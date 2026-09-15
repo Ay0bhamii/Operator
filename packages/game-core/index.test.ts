@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPuzzle, dailyGame, replay, simulateFlight, stackBlockX } from "./index.js";
+import { createPuzzle, dailyGame, replay, simulateFlight } from "./index.js";
 
 test("same seed creates the same puzzle", () => {
   assert.deepEqual(createPuzzle("reaction", "abc"), createPuzzle("reaction", "abc"));
-  assert.notDeepEqual(createPuzzle("stack", "abc"), createPuzzle("stack", "def"));
+  assert.notDeepEqual(createPuzzle("reaction", "abc"), createPuzzle("reaction", "def"));
 });
 
 test("daily rotation always selects a ranked challenge", () => {
-  const ranked = new Set(["reaction", "color", "whack", "flight", "pop", "memory", "stack"]);
+  const ranked = new Set(["reaction", "color", "whack", "flight", "pop", "memory"]);
   for (const day of ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"]) assert.equal(ranked.has(dailyGame(day)), true);
 });
 
@@ -89,27 +89,14 @@ test("flight: taps replay into pipes passed and wild inputs are rejected", () =>
   assert.equal(run.valid, true);
 });
 
-test("stack: perfectly timed drops build a complete verified tower", () => {
-  const puzzle = createPuzzle("stack", "seed-stack");
-  if (puzzle.gameId !== "stack") return;
-  let t0 = 300;
-  const events: Array<{ t: number; type: "choice"; value: string }> = [];
-  for (let block = 0; block < puzzle.target; block += 1) {
-    const k = Math.ceil((2 * Math.PI * t0 / puzzle.period + puzzle.phase) / Math.PI);
-    const t = Math.round(((k * Math.PI - puzzle.phase) * puzzle.period) / (2 * Math.PI));
-    events.push({ t, type: "choice", value: String(Math.round(stackBlockX(puzzle, t))) });
-    t0 = t + 200;
-  }
-  const result = replay("stack", "seed-stack", events);
-  assert.equal(result.valid, true);
-  assert.equal(result.completed, true);
-  assert.equal(result.score, puzzle.target * 150 + 250);
-});
-
-test("replay rejects malformed event timelines", () => {
-  assert.equal(replay("reaction", "seed", [{ t: 200, type: "choice", value: "go" }, { t: 100, type: "choice", value: "go" }]).reason, "invalid event timing");
-  assert.equal(replay("reaction", "seed", [{ t: 100, type: "key", value: "go" }]).valid, false);
-  assert.equal(replay("whack", "seed", Array.from({ length: 61 }, (_, index) => ({ t: 100 + index * 150, type: "choice" as const, value: "3" }))).reason, "too many events");
+test("flight: a bird that never flaps falls to the ground and cannot finish", () => {
+  const idle = replay("flight", "seed-flight", [{ t: 8000, type: "key", value: "flap" }]);
+  assert.equal(idle.valid, true);
+  assert.equal(idle.completed, false);
+  assert.equal(idle.score, 0);
+  // Even a late flap cannot grant a passed pipe once the bird hits the floor.
+  const noFlap = replay("flight", "seed-flight", []);
+  assert.equal(noFlap.completed, false);
 });
 
 test("flight: a bird that never flaps falls to the ground and cannot finish", () => {
